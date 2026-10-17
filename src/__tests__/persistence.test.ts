@@ -1,0 +1,179 @@
+/**
+ * @jest-environment node
+ *
+ * Runs the real migrations, repository and service SQL against SQLite
+ * (Node's built-in `node:sqlite`) through a small adapter that implements the
+ * subset of expo-sqlite's async API the app uses.
+ */
+/// <reference types="node" />
+import { randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { type SQLiteDatabase } from 'expo-sqlite';
+
+import { LATEST_SCHEMA_VERSION, migrateDatabase } from '@/db/migrations';
+import * as repo from '@/features/habits/habit.repository';
+import * as service from '@/features/habits/habit.service';
+import { loadSettings, saveSettings } from '@/features/settings/settings.repository';
+
+jest.mock('expo-crypto', () => ({
+  randomUUID: () => jest.requireActual<typeof import('node:crypto')>('node:crypto').randomUUID(),
+}));
+
+type Params = unknown[];
+const flatten = (params: Params) => (params.length === 1 && Array.isArray(params[0]) ? params[0] : params);
+
+function adapt(raw: DatabaseSync): SQLiteDatabase {
+  const db = {
+    execAsync: async (sql: string) => raw.exec(sql),
+    runAsync: async (sql: string, ...params: Params) => {
+      const result = raw.prepare(sql).run(...(flatten(params) as never[]));
+      return { changes: Number(result.changes), lastInsertRowId: Number(result.lastInsertRowid) };
+    },
+    getAllAsync: async (sql: string, ...params: Params) => raw.prepare(sql).all(...(flatten(params) as never[])),
+    getFirstAsync: async (sql: string, ...params: Params) =>
+      raw.prepare(sql).get(...(flatten(params) as never[])) ?? null,
+    withTransactionAsync: async (task: () => Promise<void>) => {
+      raw.exec('BEGIN');
+      try {
+        await task();
+        raw.exec('COMMIT');
+      } catch (error) {
+        raw.exec('ROLLBACK');
+        throw error;
+      }
+    },
+    withExclusiveTransactionAsync: async (task: (txn: unknown) => Promise<void>) =>
+      db.withTransactionAsync(() => task(db)),
+  };
+  return db as unknown as SQLiteDatabase;
+}
+
+let dir: string;
+let path: string;
+let raw: DatabaseSync;
+let db: SQLiteDatabase;
+
+const open = async () => {
+  raw = new DatabaseSync(path);
+  db = adapt(raw);
+  await migrateDatabase(db);
+};
+const reopen = async () => {
+  raw.close();
+  await open();
+};
+
+const input = { name: 'Read', icon: '📚', color: '#FF8737', scheduleDays: [1, 3, 5], reminderTime: '08:00' };
+
+beforeEach(async () => {
+  dir = mkdtempSync(join(tmpdir(), 'flame-db-'));
+  path = join(dir, `${randomUUID()}.db`);
+  await open();
+});
+
+afterEach(() => {
+  raw.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+describe('migrations', () => {
+  it('creates the schema, records its version and is safe to re-run', async () => {
+    expect(await db.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: LATEST_SCHEMA_VERSION });
+    await migrateDatabase(db);
+    const tables = await db.getAllAsync<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'");
+    expect(tables.map((t) => t.name).sort()).toEqual(['habit_completions', 'habits', 'settings']);
+  });
+
+  it('enforces foreign keys', async () => {
+    await expect(
+      repo.insertCompletion(db, { id: 'c1', habitId: 'missing', localDate: '2024-01-01', completedAt: 'x' }),
+    ).rejects.toThrow(/FOREIGN KEY/);
+  });
+
+  it('refuses to open a database from a newer app version', async () => {
+    await db.execAsync(`PRAGMA user_version = ${LATEST_SCHEMA_VERSION + 1}`);
+    await expect(migrateDatabase(db)).rejects.toThrow(/newer than this app/);
+  });
+});
+
+describe('habits and completions', () => {
+  it('persists a habit across a restart', async () => {
+    const created = await service.createHabit(db, { ...input, name: '  Read  ' });
+    await reopen();
+    const [loaded] = await repo.listHabits(db);
+    expect(loaded).toEqual(created);
+    expect(loaded.name).toBe('Read');
+    expect(loaded.scheduleDays).toEqual([1, 3, 5]);
+  });
+
+  it('rejects invalid input without writing', async () => {
+    await expect(service.createHabit(db, { ...input, name: ' ' })).rejects.toThrow(service.HabitValidationError);
+    expect(await repo.listHabits(db)).toHaveLength(0);
+  });
+
+  it('stores one completion per habit per day, and undo removes it', async () => {
+    const habit = await service.createHabit(db, input);
+    const today = '2024-01-10';
+    await service.setCompletion(db, habit.id, today, today, true);
+    await service.setCompletion(db, habit.id, today, today, true);
+    await reopen();
+    expect(await repo.listCompletions(db)).toHaveLength(1);
+
+    // The UNIQUE constraint also holds for direct inserts.
+    await repo.insertCompletion(db, { id: 'dupe', habitId: habit.id, localDate: today, completedAt: 'x' });
+    expect(await repo.listCompletions(db)).toHaveLength(1);
+
+    await service.setCompletion(db, habit.id, today, today, false);
+    expect(await repo.listCompletions(db)).toHaveLength(0);
+  });
+
+  it('refuses check-ins for other days', async () => {
+    const habit = await service.createHabit(db, input);
+    await expect(service.setCompletion(db, habit.id, '2024-01-11', '2024-01-10', true)).rejects.toThrow(
+      /only allowed for today/,
+    );
+    expect(await repo.listCompletions(db)).toHaveLength(0);
+  });
+
+  it('archiving keeps the habit and its history, and restoring brings it back', async () => {
+    const habit = await service.createHabit(db, input);
+    await service.setCompletion(db, habit.id, '2024-01-10', '2024-01-10', true);
+    const archived = await service.setArchived(db, habit, true);
+    await reopen();
+
+    const [stored] = await repo.listHabits(db);
+    expect(stored.archivedAt).toBe(archived.archivedAt);
+    expect(await repo.listCompletions(db)).toHaveLength(1);
+
+    await service.setArchived(db, stored, false);
+    expect((await repo.listHabits(db))[0].archivedAt).toBeNull();
+  });
+
+  it('editing updates fields but keeps creation date and history', async () => {
+    const habit = await service.createHabit(db, input);
+    await service.setCompletion(db, habit.id, '2024-01-10', '2024-01-10', true);
+    await service.editHabit(db, habit, { ...input, name: 'Read more', scheduleDays: [0, 6], reminderTime: null });
+    await reopen();
+    const [stored] = await repo.listHabits(db);
+    expect(stored).toMatchObject({ name: 'Read more', scheduleDays: [0, 6], reminderTime: null, createdAt: habit.createdAt });
+    expect(await repo.listCompletions(db)).toHaveLength(1);
+  });
+
+  it('stores user text safely through parameters', async () => {
+    await service.createHabit(db, { ...input, name: "Robert'); DROP TABLE habits;--" });
+    const [stored] = await repo.listHabits(db);
+    expect(stored.name).toBe("Robert'); DROP TABLE habits;--");
+  });
+});
+
+describe('settings', () => {
+  it('defaults, saves and survives a restart', async () => {
+    expect((await loadSettings(db)).onboardingCompleted).toBe(false);
+    await saveSettings(db, { onboardingCompleted: true, hapticsEnabled: false });
+    await reopen();
+    expect(await loadSettings(db)).toEqual({ onboardingCompleted: true, hapticsEnabled: false, remindersEnabled: true });
+  });
+});
