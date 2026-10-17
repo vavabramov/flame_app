@@ -6,8 +6,9 @@
  *   updates per frame.
  * - Deterministic: fixed durations and easing, no randomness.
  * - Small amplitude: scale ≤ 1.05, rotation ±2°.
- * - Static when `animate` is false (e.g. screen not focused) or when the user
- *   prefers reduced motion.
+ * - Static when `animate` is false (e.g. screen not focused).
+ * - With Reduce Motion on, nothing moves: only the glow's brightness breathes
+ *   very slowly (an opacity fade, which Apple's guidance allows).
  * - Fixed footprint: the glow is drawn outside the box without affecting layout.
  * - Decorative: hidden from screen readers; label the surrounding element.
  */
@@ -15,6 +16,7 @@ import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
+  ReduceMotion,
   cancelAnimation,
   useAnimatedStyle,
   useReducedMotion,
@@ -47,7 +49,6 @@ function loop(duration: number, to: number, delay = 0) {
 
 export function LivingFlame({ size = 72, isActive = true, animate = true }: Props) {
   const reduceMotion = useReducedMotion();
-  const running = animate && !reduceMotion;
 
   const glow = useSharedValue(0); // 0 → 1 drives glow opacity and scale
   const sway = useSharedValue(-1); // -1 → 1 drives rotation
@@ -56,13 +57,25 @@ export function LivingFlame({ size = 72, isActive = true, animate = true }: Prop
 
   useEffect(() => {
     const values = [glow, sway, stretch, flicker];
-    if (!running) {
+    if (!animate || reduceMotion) {
       values.forEach((v) => cancelAnimation(v));
       glow.set(withTiming(0.5, { duration: 400 }));
       sway.set(withTiming(0, { duration: 400 }));
       stretch.set(withTiming(0, { duration: 400 }));
       flicker.set(withTiming(0.5, { duration: 400 }));
-      return;
+      if (animate && reduceMotion) {
+        // Opt out of Reanimated's automatic reduced-motion skip for this fade only.
+        glow.set(
+          withRepeat(
+            withTiming(1, { duration: 4500, easing: ease, reduceMotion: ReduceMotion.Never }),
+            -1,
+            true,
+            undefined,
+            ReduceMotion.Never,
+          ),
+        );
+      }
+      return () => values.forEach((v) => cancelAnimation(v));
     }
     // Staggered, non-multiple durations so the layers never sync up.
     glow.set(loop(3200, 1));
@@ -70,14 +83,14 @@ export function LivingFlame({ size = 72, isActive = true, animate = true }: Prop
     stretch.set(loop(2100, 1, 400));
     flicker.set(loop(1800, 1, 250));
     return () => values.forEach((v) => cancelAnimation(v));
-  }, [running, glow, sway, stretch, flicker]);
+  }, [animate, reduceMotion, glow, sway, stretch, flicker]);
 
   // Idle embers move half as much.
   const amplitude = isActive ? 1 : 0.5;
 
   const glowStyle = useAnimatedStyle(() => ({
     opacity: 0.35 + glow.get() * 0.3,
-    transform: [{ scale: 0.96 + glow.get() * 0.09 }],
+    transform: [{ scale: reduceMotion ? 1 : 0.96 + glow.get() * 0.09 }],
   }));
   const flameStyle = useAnimatedStyle(() => ({
     transform: [

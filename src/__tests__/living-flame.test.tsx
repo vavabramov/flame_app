@@ -31,10 +31,12 @@ describe('LivingFlame', () => {
     expect(mocked.withRepeat.mock.calls.every(([, count, reverse]) => count === -1 && reverse === true)).toBe(true);
   });
 
-  it('stays static with reduced motion', async () => {
+  it('with reduced motion, only the glow breathes and nothing moves', async () => {
     mocked.useReducedMotion.mockReturnValue(true);
     await render(<LivingFlame />);
-    expect(mocked.withRepeat).not.toHaveBeenCalled();
+    expect(mocked.withRepeat).toHaveBeenCalledTimes(1);
+    const [, count, reverse, , reduceMotion] = mocked.withRepeat.mock.calls[0];
+    expect([count, reverse, reduceMotion]).toEqual([-1, true, 'never']);
   });
 
   it('stays static when paused (screen not focused)', async () => {
