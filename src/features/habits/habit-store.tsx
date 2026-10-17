@@ -308,7 +308,8 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
             scheduleDays: habit.scheduleDays,
             startDate: habitStartDate(habit),
             completedDates: completions.get(habit.id) ?? [],
-            lapseDates: lapses.get(habit.id) ?? [],
+            // Lapses only apply to Break habits; kept in storage if the type changes.
+            lapseDates: tracksLapses(habit.type) ? (lapses.get(habit.id) ?? []) : [],
           },
           today,
         ),

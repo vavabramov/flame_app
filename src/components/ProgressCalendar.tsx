@@ -1,47 +1,38 @@
 import { type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { type CalendarCell, buildMonthGrid } from '@/features/streaks/calendar';
+import { type HabitType } from '@/features/habits/habit-type';
+import { describeDayStatus } from '@/features/progress/build-habit-heatmap';
+import { type CalendarCell, type DayStatusContext, buildMonthGrid } from '@/features/streaks/calendar';
 import { WEEKDAY_DISPLAY_ORDER, WEEKDAY_LETTER } from '@/features/habits/habit.validation';
-import { type LocalDate, type YearMonth, localDateToDate } from '@/lib/dates';
+import { type YearMonth, localDateToDate } from '@/lib/dates';
 import { colors, withAlpha } from '@/theme/colors';
 import { radius, spacing } from '@/theme/spacing';
 import { type } from '@/theme/typography';
 
+import { LAPSE_COLOR } from './HabitHeatmap';
 import { Icon } from './Icon';
 
 type Props = {
   month: YearMonth;
-  today: LocalDate;
-  scheduleDays: readonly number[];
-  startDate: LocalDate;
-  completed: ReadonlySet<LocalDate>;
+  context: DayStatusContext;
+  habitType: HabitType;
   color: string;
   canGoBack: boolean;
   canGoForward: boolean;
   onChangeMonth: (delta: -1 | 1) => void;
 };
 
-const STATE_LABEL: Record<CalendarCell['state'], string> = {
-  completed: 'completed',
-  missed: 'not completed',
-  today: 'today, open',
-  upcoming: 'scheduled',
-  off: 'not scheduled',
-};
-
 export function ProgressCalendar({
   month,
-  today,
-  scheduleDays,
-  startDate,
-  completed,
+  context,
+  habitType,
   color,
   canGoBack,
   canGoForward,
   onChangeMonth,
 }: Props) {
-  const weeks = buildMonthGrid(month, today, scheduleDays, startDate, completed);
+  const weeks = buildMonthGrid(month, context);
   const title = new Date(month.year, month.month - 1, 1).toLocaleDateString(undefined, {
     month: 'long',
     year: 'numeric',
@@ -69,7 +60,7 @@ export function ProgressCalendar({
         <View key={w} style={styles.row}>
           {week.map((cell, i) => (
             <View key={cell?.date ?? `pad-${w}-${i}`} style={styles.cellSlot}>
-              {cell ? <DayCell cell={cell} color={color} /> : null}
+              {cell ? <DayCell cell={cell} color={color} habitType={habitType} /> : null}
             </View>
           ))}
         </View>
@@ -77,40 +68,44 @@ export function ProgressCalendar({
 
       <View style={styles.legend}>
         <LegendItem swatch={<View style={[styles.legendDot, { backgroundColor: color }]} />} label="Done" />
-        <LegendItem swatch={<View style={[styles.legendDot, styles.legendMissed]} />} label="Missed" />
+        <LegendItem swatch={<View style={[styles.legendDot, styles.legendMissed]} />} label="No check-in" />
+        {habitType === 'break' ? (
+          <LegendItem swatch={<View style={[styles.legendDot, styles.legendLapse]} />} label="Lapse" />
+        ) : null}
         <LegendItem swatch={<View style={[styles.legendDot, styles.legendToday]} />} label="Today" />
       </View>
     </View>
   );
 }
 
-function DayCell({ cell, color }: { cell: CalendarCell; color: string }) {
+function DayCell({ cell, color, habitType }: { cell: CalendarCell; color: string; habitType: HabitType }) {
   const label = `${localDateToDate(cell.date).toLocaleDateString(undefined, {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
-  })}, ${STATE_LABEL[cell.state]}`;
+  })}, ${describeDayStatus(cell.status, habitType)}`;
 
   const circle = [
     styles.day,
-    cell.state === 'completed' && { backgroundColor: color },
-    cell.state === 'missed' && styles.dayMissed,
-    cell.isToday && cell.state !== 'completed' && styles.dayToday,
-    cell.isToday && cell.state === 'completed' && { borderColor: colors.textPrimary, borderWidth: 2 },
+    cell.status === 'completed' && { backgroundColor: color },
+    cell.status === 'missed' && styles.dayMissed,
+    cell.status === 'lapse' && styles.dayLapse,
+    cell.isToday && cell.status !== 'completed' && cell.status !== 'lapse' && styles.dayToday,
+    cell.isToday && cell.status === 'completed' && { borderColor: colors.textPrimary, borderWidth: 2 },
   ];
   const textColor =
-    cell.state === 'completed'
+    cell.status === 'completed'
       ? colors.onAccent
-      : cell.state === 'off'
+      : cell.status === 'unscheduled' || cell.status === 'not-started'
         ? colors.textTertiary
-        : cell.state === 'upcoming'
+        : cell.status === 'future'
           ? colors.textSecondary
           : colors.textPrimary;
 
   return (
     <View style={circle} accessible accessibilityLabel={label}>
       <Text
-        style={[styles.dayText, { color: textColor }, cell.state === 'completed' && styles.dayTextStrong]}
+        style={[styles.dayText, { color: textColor }, cell.status === 'completed' && styles.dayTextStrong]}
         maxFontSizeMultiplier={1.2}>
         {cell.day}
       </Text>
@@ -172,6 +167,7 @@ const styles = StyleSheet.create({
   },
   dayMissed: { backgroundColor: withAlpha(colors.textSecondary, 0.1) },
   dayToday: { borderWidth: 2, borderColor: colors.accent },
+  dayLapse: { borderWidth: 2, borderColor: LAPSE_COLOR, backgroundColor: withAlpha(LAPSE_COLOR, 0.15) },
   dayText: { fontSize: 15, fontWeight: '500', fontVariant: ['tabular-nums'] },
   dayTextStrong: { fontWeight: '700' },
   legend: { flexDirection: 'row', gap: spacing.lg, marginTop: spacing.sm, flexWrap: 'wrap' },
@@ -179,4 +175,5 @@ const styles = StyleSheet.create({
   legendDot: { width: 10, height: 10, borderRadius: 5 },
   legendMissed: { backgroundColor: withAlpha(colors.textSecondary, 0.25) },
   legendToday: { borderWidth: 2, borderColor: colors.accent },
+  legendLapse: { borderWidth: 2, borderColor: LAPSE_COLOR },
 });

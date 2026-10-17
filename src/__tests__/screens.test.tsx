@@ -175,6 +175,41 @@ describe('Progress', () => {
     expect(screen.getByRole('button', { name: 'Next month' })).toBeDisabled();
   });
 
+  it('shows the activity heatmap, and tapping a day reveals its date and status', async () => {
+    mockStore = makeStore([habit({})], { read: ['2024-01-08', '2024-01-09'] });
+    await render(<ProgressScreen />);
+    // Jan 1 (start) to Jan 9 elapsed, today open: 2 of 9.
+    expect(screen.getByText('2 of 9 scheduled days completed')).toBeTruthy();
+    expect(screen.getByTestId('day-detail')).toHaveTextContent(/Wednesday, January 10, 2024.*Today, not checked in yet/);
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Tuesday, January 9: completed' }));
+    expect(screen.getByTestId('day-detail')).toHaveTextContent(/Tuesday, January 9, 2024.*Scheduled · Completed/);
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Thursday, December 28: before this habit started' }));
+    expect(screen.getByTestId('day-detail')).toHaveTextContent(/Before this habit started/);
+  });
+
+  it('labels Break habit days as made it, with lapses', async () => {
+    mockStore = makeStore(
+      [habit({ id: 'scroll', type: 'break', name: 'No doomscrolling' })],
+      { scroll: ['2024-01-08'] },
+      { scroll: ['2024-01-09'] },
+    );
+    await render(<ProgressScreen />);
+    expect(screen.getByText('1 of 9 scheduled days made it through')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Monday, January 8: made it' })).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Tuesday, January 9: lapse logged' }));
+    expect(screen.getByTestId('day-detail')).toHaveTextContent(/Lapse logged/);
+    expect(screen.getAllByText('Lapse')).toHaveLength(2); // heatmap and month legends
+  });
+
+  it('explains instead of showing an empty grid for a brand-new habit', async () => {
+    mockStore = makeStore([habit({ createdAt: '2024-01-10T12:00:00.000Z' })]);
+    await render(<ProgressScreen />);
+    expect(screen.getByText('Your activity grid starts with your first check-in')).toBeTruthy();
+    expect(screen.queryByTestId('day-detail')).toBeNull();
+  });
+
   it('has an empty state with no habits', async () => {
     mockStore = makeStore([]);
     await render(<ProgressScreen />);
