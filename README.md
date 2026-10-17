@@ -159,3 +159,7 @@ days are divided by scheduled days in that window.
   setup).
 - Under Jest, Reanimated is replaced with a minimal mock (`jest.setup.js`). Animations aren't
   covered by tests.
+
+## License
+
+[MIT](LICENSE) © 2026 Vladislav Abramov
