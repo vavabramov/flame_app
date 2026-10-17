@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { HABIT_TYPE_COPY } from '@/features/habits/habit-type';
 import { type HabitInput } from '@/features/habits/habit.types';
 import {
   ALL_DAYS,
@@ -29,6 +30,7 @@ import { GUTTER, radius, spacing, TOUCH_TARGET } from '@/theme/spacing';
 import { BODY_MAX_FONT_SCALE, type } from '@/theme/typography';
 
 import { HabitIcon } from './HabitIcon';
+import { HabitTypeSelector } from './HabitTypeSelector';
 import { Icon } from './Icon';
 import { ReminderPermissionNotice } from './ReminderPermissionNotice';
 
@@ -121,11 +123,20 @@ export function HabitForm({
           <HabitIcon icon={input.icon} color={input.color} size={64} />
         </View>
 
+        <Section label="Direction" error={visibleErrors.type}>
+          <HabitTypeSelector value={input.type} onChange={(habitType) => set({ type: habitType })} accent={input.color} />
+          {initial.name !== '' && input.type !== initial.type ? (
+            <Text style={type.footnote}>
+              Past check-ins are kept and count as successful days for the new direction.
+            </Text>
+          ) : null}
+        </Section>
+
         <Section label="Name" error={visibleErrors.name}>
           <TextInput
             value={input.name}
             onChangeText={(name) => set({ name })}
-            placeholder="e.g. Read 10 pages"
+            placeholder={HABIT_TYPE_COPY[input.type].namePlaceholder}
             placeholderTextColor={colors.textTertiary}
             maxLength={NAME_MAX_LENGTH}
             autoFocus={initial.name === ''}

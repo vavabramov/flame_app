@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { type SQLiteDatabase } from 'expo-sqlite';
 
-import { LATEST_SCHEMA_VERSION, migrateDatabase } from '@/db/migrations';
+import { LATEST_SCHEMA_VERSION, MIGRATIONS, migrateDatabase } from '@/db/migrations';
 import * as repo from '@/features/habits/habit.repository';
 import * as service from '@/features/habits/habit.service';
 import { loadSettings, saveSettings } from '@/features/settings/settings.repository';
@@ -66,7 +66,7 @@ const reopen = async () => {
   await open();
 };
 
-const input = { name: 'Read', icon: '📚', color: '#FF8737', scheduleDays: [1, 3, 5], reminderTime: '08:00' };
+const input = { type: 'build' as const, name: 'Read', icon: '📚', color: '#FF8737', scheduleDays: [1, 3, 5], reminderTime: '08:00' };
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'flame-db-'));
@@ -80,11 +80,37 @@ afterEach(() => {
 });
 
 describe('migrations', () => {
+  it('migrates a v1 database to the current schema, keeping data and defaulting habits to build', async () => {
+    raw.close();
+    rmSync(path, { force: true });
+    raw = new DatabaseSync(path);
+    db = adapt(raw);
+    // Recreate the original v1 schema with one habit and one completion.
+    await db.execAsync(MIGRATIONS[0].sql);
+    await db.execAsync('PRAGMA user_version = 1');
+    await db.runAsync(
+      `INSERT INTO habits (id, name, icon, color, schedule_days, reminder_time, created_at, updated_at, archived_at)
+       VALUES ('old', 'Read', '📚', '#FF8737', '[1,3,5]', '08:00', '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z', NULL)`,
+    );
+    await db.runAsync(
+      "INSERT INTO habit_completions (id, habit_id, local_date, completed_at) VALUES ('c', 'old', '2024-01-03', 'x')",
+    );
+
+    await migrateDatabase(db);
+
+    expect(await db.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: LATEST_SCHEMA_VERSION });
+    const [habit] = await repo.listHabits(db);
+    expect(habit).toMatchObject({ id: 'old', type: 'build', name: 'Read', scheduleDays: [1, 3, 5], reminderTime: '08:00' });
+    expect(await repo.listCompletions(db)).toHaveLength(1);
+    expect(await repo.listLapses(db)).toHaveLength(0);
+  });
+
+
   it('creates the schema, records its version and is safe to re-run', async () => {
     expect(await db.getFirstAsync('PRAGMA user_version')).toEqual({ user_version: LATEST_SCHEMA_VERSION });
     await migrateDatabase(db);
     const tables = await db.getAllAsync<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'");
-    expect(tables.map((t) => t.name).sort()).toEqual(['habit_completions', 'habits', 'settings']);
+    expect(tables.map((t) => t.name).sort()).toEqual(['habit_completions', 'habit_lapses', 'habits', 'settings']);
   });
 
   it('enforces foreign keys', async () => {
@@ -166,6 +192,64 @@ describe('habits and completions', () => {
     await service.createHabit(db, { ...input, name: "Robert'); DROP TABLE habits;--" });
     const [stored] = await repo.listHabits(db);
     expect(stored.name).toBe("Robert'); DROP TABLE habits;--");
+  });
+});
+
+describe('habit types and lapses', () => {
+  const today = '2024-01-10';
+
+  it('persists the selected type, including after an edit', async () => {
+    const habit = await service.createHabit(db, { ...input, type: 'break', name: 'No doomscrolling' });
+    await reopen();
+    expect((await repo.listHabits(db))[0].type).toBe('break');
+    await service.editHabit(db, habit, { ...input, type: 'build' });
+    await reopen();
+    expect((await repo.listHabits(db))[0].type).toBe('build');
+  });
+
+  it('reads an unknown stored type as build', async () => {
+    await service.createHabit(db, input);
+    await db.runAsync("UPDATE habits SET type = 'something-else'");
+    expect((await repo.listHabits(db))[0].type).toBe('build');
+  });
+
+  it('stores a lapse apart from completions, one per day, and undo removes it', async () => {
+    const habit = await service.createHabit(db, { ...input, type: 'break' });
+    await service.setLapse(db, habit, today, today, true);
+    await service.setLapse(db, habit, today, today, true);
+    await reopen();
+    expect(await repo.listLapses(db)).toHaveLength(1);
+    expect(await repo.listCompletions(db)).toHaveLength(0);
+    await service.setLapse(db, habit, today, today, false);
+    expect(await repo.listLapses(db)).toHaveLength(0);
+  });
+
+  it('never stores a success and a lapse for the same day', async () => {
+    const habit = await service.createHabit(db, { ...input, type: 'break' });
+    await service.setLapse(db, habit, today, today, true);
+    await expect(service.setCompletion(db, habit.id, today, today, true)).rejects.toThrow(service.DayConflictError);
+    await service.setLapse(db, habit, today, today, false);
+    await service.setCompletion(db, habit.id, today, today, true);
+    await expect(service.setLapse(db, habit, today, today, true)).rejects.toThrow(service.DayConflictError);
+    expect(await repo.listCompletions(db)).toHaveLength(1);
+    expect(await repo.listLapses(db)).toHaveLength(0);
+  });
+
+  it('only Break habits can log lapses, and only for today', async () => {
+    const build = await service.createHabit(db, input);
+    await expect(service.setLapse(db, build, today, today, true)).rejects.toThrow(/Break habits/);
+    const brk = await service.createHabit(db, { ...input, type: 'break' });
+    await expect(service.setLapse(db, brk, '2024-01-11', today, true)).rejects.toThrow(/only allowed for today/);
+  });
+
+  it('archiving a Break habit keeps its successes and lapses', async () => {
+    const habit = await service.createHabit(db, { ...input, type: 'break' });
+    await service.setLapse(db, habit, today, today, true);
+    await service.setCompletion(db, habit.id, '2024-01-11', '2024-01-11', true);
+    await service.setArchived(db, habit, true);
+    await reopen();
+    expect(await repo.listLapses(db)).toHaveLength(1);
+    expect(await repo.listCompletions(db)).toHaveLength(1);
   });
 });
 

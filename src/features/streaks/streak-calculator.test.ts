@@ -216,3 +216,47 @@ describe('completion rate', () => {
     expect(currentStreak(h, '2024-01-02')).toBe(1);
   });
 });
+
+describe('lapses (Break habits)', () => {
+  const withLapses = (completed: LocalDate[], lapses: LocalDate[]): StreakHistory => ({
+    scheduleDays: EVERY_DAY,
+    startDate: '2024-01-01',
+    completedDates: completed,
+    lapseDates: lapses,
+  });
+
+  it('a lapse today ends the current streak right away but keeps the best streak', () => {
+    const h = withLapses(range('2024-01', 1, 4), ['2024-01-05']);
+    expect(currentStreak(h, '2024-01-05')).toBe(0);
+    expect(bestStreak(h, '2024-01-05')).toBe(4);
+    expect(summarizeStreak(h, '2024-01-05')).toMatchObject({ isLapsedToday: true, isCompletedToday: false });
+  });
+
+  it('a lapse closes today for the completion rate', () => {
+    const h = withLapses(range('2024-01', 1, 4), ['2024-01-05']);
+    expect(completionRate(h, '2024-01-05', 7)).toEqual({ completed: 4, scheduled: 5, rate: 0.8 });
+  });
+
+  it('the streak restarts the day after a lapse', () => {
+    const h = withLapses([...range('2024-01', 1, 4), '2024-01-06'], ['2024-01-05']);
+    expect(currentStreak(h, '2024-01-06')).toBe(1);
+    expect(bestStreak(h, '2024-01-06')).toBe(4);
+  });
+
+  it('never counts a lapse as a success, even if a completion exists for the same day', () => {
+    const h = withLapses(['2024-01-04', '2024-01-05'], ['2024-01-05']);
+    expect(currentStreak(h, '2024-01-05')).toBe(0);
+    expect(summarizeStreak(h, '2024-01-05').isCompletedToday).toBe(false);
+  });
+
+  it('not logging a lapse is not a success: only check-ins count', () => {
+    const h = withLapses([], []);
+    expect(currentStreak(h, '2024-01-05')).toBe(0);
+    expect(completionRate(h, '2024-01-05', 7)).toEqual({ completed: 0, scheduled: 4, rate: 0 });
+  });
+
+  it('ignores future lapses', () => {
+    const h = withLapses(range('2024-01', 1, 5), ['2024-01-07']);
+    expect(currentStreak(h, '2024-01-05')).toBe(5);
+  });
+});

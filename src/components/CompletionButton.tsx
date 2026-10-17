@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, Text } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -10,12 +10,23 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { colors, withAlpha } from '@/theme/colors';
-import { TOUCH_TARGET } from '@/theme/spacing';
+import { radius, spacing, TOUCH_TARGET } from '@/theme/spacing';
 
 import { Icon } from './Icon';
 
-/** The check-in circle. Decorative: the surrounding card is the accessible control. */
-export function CompletionButton({ completed, color }: { completed: boolean; color: string }) {
+type Props = {
+  completed: boolean;
+  color: string;
+  /** e.g. "Complete" / "Made it today". */
+  label: string;
+  /** e.g. "Done" / "Made it". */
+  doneLabel: string;
+  accessibilityLabel: string;
+  onPress: () => void;
+};
+
+/** The one-tap check-in control. Tapping again undoes today's check-in. */
+export function CompletionButton({ completed, color, label, doneLabel, accessibilityLabel, onPress }: Props) {
   const reduceMotion = useReducedMotion();
   const scale = useSharedValue(1);
   const wasCompleted = useRef(completed);
@@ -25,41 +36,62 @@ export function CompletionButton({ completed, color }: { completed: boolean; col
     wasCompleted.current = completed;
     if (!justCompleted || reduceMotion) return;
     scale.set(
-      withSequence(withTiming(1.18, { duration: 120 }), withSpring(1, { damping: 9, stiffness: 220 })),
+      withSequence(withTiming(1.08, { duration: 120 }), withSpring(1, { damping: 10, stiffness: 240 })),
     );
   }, [completed, reduceMotion, scale]);
 
   const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
 
   return (
-    <Animated.View
-      style={[
-        styles.circle,
-        completed
-          ? { backgroundColor: color, borderColor: color, shadowColor: color, shadowOpacity: 0.45 }
-          : { backgroundColor: withAlpha(color, 0.06), borderColor: withAlpha(color, 0.55) },
-        animated,
-      ]}>
-      {completed ? (
-        <Icon name="checkmark" size={20} weight="bold" color={colors.onAccent} fallback="✓" />
-      ) : (
-        <View style={[styles.dot, { backgroundColor: withAlpha(color, 0.4) }]} />
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: completed }}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={completed ? 'Double tap to undo today’s check-in' : 'Double tap to check in for today'}
+      hitSlop={6}>
+      {({ pressed }) => (
+        <Animated.View
+          style={[
+            styles.pill,
+            completed
+              ? { backgroundColor: color, borderColor: color, shadowColor: color, shadowOpacity: 0.4 }
+              : { backgroundColor: withAlpha(color, 0.08), borderColor: withAlpha(color, 0.6) },
+            pressed && styles.pressed,
+            animated,
+          ]}>
+          <Icon
+            name={completed ? 'checkmark' : 'circle'}
+            size={14}
+            weight="bold"
+            color={completed ? colors.onAccent : color}
+            fallback={completed ? '✓' : '○'}
+          />
+          <Text
+            style={[styles.label, { color: completed ? colors.onAccent : colors.textPrimary }]}
+            maxFontSizeMultiplier={1.3}
+            numberOfLines={1}>
+            {completed ? doneLabel : label}
+          </Text>
+        </Animated.View>
       )}
-    </Animated.View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  circle: {
-    width: TOUCH_TARGET,
-    height: TOUCH_TARGET,
-    borderRadius: TOUCH_TARGET / 2,
-    borderWidth: 2,
+  pill: {
+    minHeight: TOUCH_TARGET,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
     shadowOpacity: 0,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 2 },
   },
-  dot: { width: 6, height: 6, borderRadius: 3 },
+  pressed: { opacity: 0.8 },
+  label: { fontSize: 14, fontWeight: '700' },
 });

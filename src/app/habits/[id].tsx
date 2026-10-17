@@ -67,6 +67,7 @@ export default function EditHabitScreen() {
       title={archived ? 'Archived habit' : 'Edit habit'}
       submitLabel="Save"
       initial={{
+        type: habit.type,
         name: habit.name,
         icon: habit.icon,
         color: habit.color,

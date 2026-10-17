@@ -5,9 +5,12 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button } from '@/components/Button';
 import { EmptyState } from '@/components/EmptyState';
 import { HabitIcon } from '@/components/HabitIcon';
+import { HabitTypeBadge } from '@/components/HabitTypeSelector';
+import { SegmentedControl } from '@/components/SegmentedControl';
 import { Icon } from '@/components/Icon';
 import { Screen } from '@/components/Screen';
 import { useHabitStore } from '@/features/habits/habit-store';
+import { HABIT_TYPE_COPY, type HabitType } from '@/features/habits/habit-type';
 import { type Habit } from '@/features/habits/habit.types';
 import { describeSchedule, parseReminderTime } from '@/features/habits/habit.validation';
 import { colors } from '@/theme/colors';
@@ -26,6 +29,9 @@ function reminderLabel(time: string | null): string | null {
 export default function HabitsScreen() {
   const { activeHabits, archivedHabits, stats, setHabitArchived } = useHabitStore();
   const [showArchived, setShowArchived] = useState(false);
+  const [filter, setFilter] = useState<'all' | HabitType>('all');
+  const hasBothTypes = new Set(activeHabits.map((h) => h.type)).size > 1;
+  const visibleHabits = hasBothTypes && filter !== 'all' ? activeHabits.filter((h) => h.type === filter) : activeHabits;
   const openNew = () => router.push('/habits/new');
 
   const restore = async (habit: Habit) => {
@@ -59,7 +65,19 @@ export default function HabitsScreen() {
         />
       ) : (
         <View style={styles.list}>
-          {activeHabits.map((habit) => {
+          {hasBothTypes ? (
+            <SegmentedControl
+              value={filter}
+              onChange={setFilter}
+              options={[
+                { value: 'all', label: 'All' },
+                { value: 'build', label: HABIT_TYPE_COPY.build.label },
+                { value: 'break', label: HABIT_TYPE_COPY.break.label },
+              ]}
+              accessibilityLabel="Filter habits"
+            />
+          ) : null}
+          {visibleHabits.map((habit) => {
             const reminder = reminderLabel(habit.reminderTime);
             const streak = stats.get(habit.id)?.currentStreak ?? 0;
             return (
@@ -67,7 +85,7 @@ export default function HabitsScreen() {
                 key={habit.id}
                 onPress={() => router.push({ pathname: '/habits/[id]', params: { id: habit.id } })}
                 accessibilityRole="button"
-                accessibilityLabel={`${habit.name}, ${describeSchedule(habit.scheduleDays)}${reminder ? `, reminder at ${reminder}` : ''}`}
+                accessibilityLabel={`${habit.name}, ${HABIT_TYPE_COPY[habit.type].label}, ${describeSchedule(habit.scheduleDays)}${reminder ? `, reminder at ${reminder}` : ''}`}
                 accessibilityHint="Opens the habit to edit or archive it"
                 style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
                 <HabitIcon icon={habit.icon} color={habit.color} />
@@ -75,6 +93,7 @@ export default function HabitsScreen() {
                   <Text style={type.headline} numberOfLines={1} maxFontSizeMultiplier={BODY_MAX_FONT_SCALE}>
                     {habit.name}
                   </Text>
+                  <HabitTypeBadge habitType={habit.type} />
                   <Text style={type.footnote} numberOfLines={2} maxFontSizeMultiplier={BODY_MAX_FONT_SCALE}>
                     {describeSchedule(habit.scheduleDays)}
                     {reminder ? ` · ${reminder}` : ''}

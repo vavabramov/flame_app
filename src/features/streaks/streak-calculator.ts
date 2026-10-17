@@ -19,7 +19,11 @@
  *   whole history. It never decreases when a day is missed.
  * - Completions on unscheduled days (possible after a schedule edit) stay in the
  *   history and calendar, but don't count toward streaks or rates.
- * - Future-dated completions are ignored.
+ * - Lapses (Break habits) are separate events, never successes. A lapse today
+ *   closes the day: the current streak ends right away instead of waiting for
+ *   midnight. Past successes and the best streak are untouched. If a date somehow
+ *   has both a completion and a lapse, the lapse wins.
+ * - Future-dated completions and lapses are ignored.
  * - Schedule edits apply to the whole history: streaks are recomputed with the
  *   current schedule.
  */
@@ -38,6 +42,8 @@ export type StreakHistory = {
   startDate: LocalDate;
   /** Local dates with a completion. Duplicates are harmless. */
   completedDates: Iterable<LocalDate>;
+  /** Local dates with a logged lapse (Break habits). */
+  lapseDates?: Iterable<LocalDate>;
 };
 
 export type StreakSummary = {
@@ -45,6 +51,7 @@ export type StreakSummary = {
   bestStreak: number;
   isScheduledToday: boolean;
   isCompletedToday: boolean;
+  isLapsedToday: boolean;
 };
 
 export type CompletionRate = {
@@ -58,6 +65,7 @@ export type CompletionRate = {
 type PreparedHistory = {
   schedule: Set<number>;
   done: Set<number>;
+  lapsed: Set<number>;
   start: number;
   today: number;
 };
@@ -75,7 +83,16 @@ function prepare(history: StreakHistory, today: LocalDate): PreparedHistory {
     if (day < start) start = day;
   }
 
-  return { schedule: new Set(history.scheduleDays), done, start, today: todayNumber };
+  const lapsed = new Set<number>();
+  for (const date of history.lapseDates ?? []) {
+    const day = toDayNumber(date);
+    if (day > todayNumber) continue;
+    lapsed.add(day);
+    done.delete(day);
+    if (day < start) start = day;
+  }
+
+  return { schedule: new Set(history.scheduleDays), done, lapsed, start, today: todayNumber };
 }
 
 const isScheduled = (prepared: PreparedHistory, day: number) =>
@@ -90,8 +107,8 @@ export function currentStreak(history: StreakHistory, today: LocalDate): number 
   if (prepared.schedule.size === 0) return 0;
 
   let day = prepared.today;
-  // Today's scheduled occurrence isn't missed until the day ends.
-  if (isScheduled(prepared, day) && !prepared.done.has(day)) day -= 1;
+  // Today's scheduled occurrence isn't missed until the day ends (or a lapse closes it).
+  if (isScheduled(prepared, day) && !prepared.done.has(day) && !prepared.lapsed.has(day)) day -= 1;
 
   let streak = 0;
   for (; day >= prepared.start; day -= 1) {
@@ -113,7 +130,7 @@ export function bestStreak(history: StreakHistory, today: LocalDate): number {
     if (prepared.done.has(day)) {
       run += 1;
       if (run > best) best = run;
-    } else if (day !== prepared.today) {
+    } else if (day !== prepared.today || prepared.lapsed.has(day)) {
       run = 0;
     }
   }
@@ -121,12 +138,13 @@ export function bestStreak(history: StreakHistory, today: LocalDate): number {
 }
 
 export function summarizeStreak(history: StreakHistory, today: LocalDate): StreakSummary {
-  const completed = new Set(history.completedDates);
+  const lapsedToday = new Set(history.lapseDates ?? []).has(today);
   return {
     currentStreak: currentStreak(history, today),
     bestStreak: bestStreak(history, today),
     isScheduledToday: isScheduledOn(history.scheduleDays, today),
-    isCompletedToday: completed.has(today),
+    isCompletedToday: !lapsedToday && new Set(history.completedDates).has(today),
+    isLapsedToday: lapsedToday,
   };
 }
 
@@ -135,8 +153,9 @@ export function summarizeStreak(history: StreakHistory, today: LocalDate): Strea
  *
  * - The denominator is only scheduled days, on or after the start date.
  * - Future dates are never in the window.
- * - Today counts only once it's completed. An open today is neither a miss nor
- *   in the denominator, so the rate never drops just because the day isn't over.
+ * - Today counts only once it's completed or a lapse is logged. An open today is
+ *   neither a miss nor in the denominator, so the rate never drops just because
+ *   the day isn't over.
  */
 export function completionRate(
   history: StreakHistory,
@@ -151,7 +170,7 @@ export function completionRate(
   for (let day = from; day <= prepared.today; day += 1) {
     if (!isScheduled(prepared, day)) continue;
     const isDone = prepared.done.has(day);
-    if (day === prepared.today && !isDone) continue;
+    if (day === prepared.today && !isDone && !prepared.lapsed.has(day)) continue;
     scheduled += 1;
     if (isDone) completed += 1;
   }

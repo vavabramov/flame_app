@@ -10,7 +10,12 @@ import { GUTTER, spacing } from '@/theme/spacing';
 import { BODY_MAX_FONT_SCALE, type } from '@/theme/typography';
 
 const POINTS: { icon: IconName; fallback: string; title: string; body: string }[] = [
-  { icon: 'checkmark.circle.fill', fallback: '✓', title: 'One tap a day', body: 'Check in on what you showed up for. That’s it.' },
+  {
+    icon: 'checkmark.circle.fill',
+    fallback: '✓',
+    title: 'Build or break, one tap a day',
+    body: 'Read 10 pages, or skip late-night scrolling. Check in when you’ve made it.',
+  },
   { icon: 'flame.fill', fallback: '🔥', title: 'Watch your streak grow', body: 'Only the days you schedule count, so rest days never break it.' },
   { icon: 'arrow.counterclockwise', fallback: '↺', title: 'Missed a day? Start again', body: 'Your history and best streak are always kept.' },
 ];

@@ -3,7 +3,7 @@ import { describeSchedule, normalizeScheduleDays, validateHabitInput } from './h
 import { planReminders } from '@/features/reminders/reminder.plan';
 import { type Habit } from './habit.types';
 
-const base = { name: 'Read', icon: '📚', color: '#FF8737', scheduleDays: [0, 1, 2, 3, 4, 5, 6], reminderTime: null };
+const base = { type: 'build' as const, name: 'Read', icon: '📚', color: '#FF8737', scheduleDays: [0, 1, 2, 3, 4, 5, 6], reminderTime: null };
 
 describe('habit validation', () => {
   it('trims and collapses whitespace in the name', () => {

@@ -9,9 +9,18 @@ import { type LocalDate } from '@/lib/dates';
 
 import { CheckInDateError } from './completions';
 import * as repo from './habit.repository';
-import { type Habit, type HabitCompletion, type HabitInput } from './habit.types';
+import { tracksLapses } from './habit-type';
+import { type Habit, type HabitCompletion, type HabitInput, type HabitLapse } from './habit.types';
 import { validateHabitInput } from './habit.validation';
 import { canToggleCompletion } from '@/features/streaks/streak-calculator';
+
+/** A day can be a success or a lapse, never both. */
+export class DayConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DayConflictError';
+  }
+}
 
 export class HabitValidationError extends Error {
   constructor(readonly errors: ReturnType<typeof validateHabitInput>['errors']) {
@@ -84,10 +93,43 @@ export async function setCompletion(
     localDate,
     completedAt: now.toISOString(),
   };
-  await repo.insertCompletion(db, completion);
+  await db.withTransactionAsync(async () => {
+    if (await repo.hasLapse(db, habitId, localDate)) {
+      throw new DayConflictError('A lapse is logged for today. Undo it first to check in.');
+    }
+    await repo.insertCompletion(db, completion);
+  });
+}
+
+/** Logs or removes today's lapse for a Break habit. A lapse is never stored as a completion. */
+export async function setLapse(
+  db: SQLiteDatabase,
+  habit: Habit,
+  localDate: LocalDate,
+  today: LocalDate,
+  logged: boolean,
+  now = new Date(),
+): Promise<void> {
+  if (!canToggleCompletion(localDate, today)) throw new CheckInDateError(localDate);
+  if (!logged) {
+    await repo.deleteLapse(db, habit.id, localDate);
+    return;
+  }
+  if (!tracksLapses(habit.type)) throw new Error('Lapses can only be logged for Break habits.');
+  const lapse: HabitLapse = { id: randomUUID(), habitId: habit.id, localDate, loggedAt: now.toISOString() };
+  await db.withTransactionAsync(async () => {
+    if (await repo.hasCompletion(db, habit.id, localDate)) {
+      throw new DayConflictError('Today is already checked in. Undo it first to log a lapse.');
+    }
+    await repo.insertLapse(db, lapse);
+  });
 }
 
 export async function loadAll(db: SQLiteDatabase) {
-  const [habits, completions] = await Promise.all([repo.listHabits(db), repo.listCompletions(db)]);
-  return { habits, completions };
+  const [habits, completions, lapses] = await Promise.all([
+    repo.listHabits(db),
+    repo.listCompletions(db),
+    repo.listLapses(db),
+  ]);
+  return { habits, completions, lapses };
 }

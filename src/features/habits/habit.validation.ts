@@ -1,3 +1,4 @@
+import { isHabitType } from './habit-type';
 import { type HabitInput } from './habit.types';
 
 export const NAME_MAX_LENGTH = 40;
@@ -9,7 +10,9 @@ export const WEEKDAY_LETTER = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
-export type HabitInputErrors = Partial<Record<'name' | 'scheduleDays' | 'reminderTime' | 'icon' | 'color', string>>;
+export type HabitInputErrors = Partial<
+  Record<'type' | 'name' | 'scheduleDays' | 'reminderTime' | 'icon' | 'color', string>
+>;
 
 /** Sorted, unique, valid weekdays. */
 export function normalizeScheduleDays(days: readonly unknown[]): number[] {
@@ -44,6 +47,7 @@ export function validateHabitInput(input: HabitInput): {
   if (input.reminderTime !== null && !isValidReminderTime(input.reminderTime)) {
     errors.reminderTime = 'Choose a valid time.';
   }
+  if (!isHabitType(input.type)) errors.type = 'Choose Build or Break.';
   if (input.icon.trim().length === 0) errors.icon = 'Choose an icon.';
   if (input.color.trim().length === 0) errors.color = 'Choose a color.';
 

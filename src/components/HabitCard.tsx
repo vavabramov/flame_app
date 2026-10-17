@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { HABIT_TYPE_COPY, tracksLapses } from '@/features/habits/habit-type';
 import { type Habit } from '@/features/habits/habit.types';
 import { colors, withAlpha } from '@/theme/colors';
 import { radius, spacing } from '@/theme/spacing';
@@ -12,26 +13,23 @@ import { Icon } from './Icon';
 type Props = {
   habit: Habit;
   completed: boolean;
+  lapsed: boolean;
   currentStreak: number;
   onToggle: () => void;
+  onToggleLapse: () => void;
 };
 
-/** A Today row. The whole card is one tap target that checks in, or undoes today's check-in. */
-export function HabitCard({ habit, completed, currentStreak, onToggle }: Props) {
+/** A Today row: one-tap check-in, plus a low-key lapse action for Break habits. */
+export function HabitCard({ habit, completed, lapsed, currentStreak, onToggle, onToggleLapse }: Props) {
+  const copy = HABIT_TYPE_COPY[habit.type];
   const streakLabel =
     currentStreak > 0 ? `${currentStreak} in a row` : completed ? 'Streak started' : 'Start a streak today';
 
   return (
-    <Pressable
-      onPress={onToggle}
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked: completed }}
-      accessibilityLabel={`${habit.name}. ${streakLabel}.`}
-      accessibilityHint={completed ? 'Double tap to undo today’s check-in' : 'Double tap to check in for today'}
-      style={({ pressed }) => [
+    <View
+      style={[
         styles.card,
         completed && { backgroundColor: withAlpha(habit.color, 0.08), borderColor: withAlpha(habit.color, 0.35) },
-        pressed && styles.pressed,
       ]}>
       <HabitIcon icon={habit.icon} color={habit.color} />
 
@@ -39,20 +37,47 @@ export function HabitCard({ habit, completed, currentStreak, onToggle }: Props) 
         <Text style={type.headline} numberOfLines={2} maxFontSizeMultiplier={BODY_MAX_FONT_SCALE}>
           {habit.name}
         </Text>
-        <View style={styles.streakRow}>
-          {currentStreak > 0 ? (
-            <Icon name="flame.fill" size={13} color={colors.accent} fallback="🔥" />
-          ) : null}
-          <Text
-            style={[type.footnote, currentStreak > 0 && styles.streakActive]}
-            maxFontSizeMultiplier={BODY_MAX_FONT_SCALE}>
-            {streakLabel}
+
+        {lapsed ? (
+          <Text style={type.footnote} maxFontSizeMultiplier={BODY_MAX_FONT_SCALE}>
+            Lapse noted. Tomorrow is a fresh start.
           </Text>
-        </View>
+        ) : (
+          <View style={styles.streakRow}>
+            {currentStreak > 0 ? <Icon name="flame.fill" size={13} color={colors.accent} fallback="🔥" /> : null}
+            <Text
+              style={[type.footnote, currentStreak > 0 && styles.streakActive]}
+              maxFontSizeMultiplier={BODY_MAX_FONT_SCALE}>
+              {streakLabel}
+            </Text>
+          </View>
+        )}
+
+        {tracksLapses(habit.type) && !completed ? (
+          <Pressable
+            onPress={onToggleLapse}
+            accessibilityRole="button"
+            accessibilityLabel={lapsed ? `Undo lapse for ${habit.name}` : `Log a lapse for ${habit.name}`}
+            hitSlop={{ top: 10, bottom: 10, left: 4, right: 12 }}
+            style={styles.lapseLink}>
+            <Text style={styles.lapseText} maxFontSizeMultiplier={BODY_MAX_FONT_SCALE}>
+              {lapsed ? 'Undo' : 'Log a lapse'}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
 
-      <CompletionButton completed={completed} color={habit.color} />
-    </Pressable>
+      {lapsed ? null : (
+        <CompletionButton
+          completed={completed}
+          color={habit.color}
+          label={copy.action}
+          doneLabel={copy.actionDone}
+          accessibilityLabel={`${copy.action}: ${habit.name}. ${streakLabel}.`}
+          onPress={onToggle}
+        />
+      )}
+    </View>
   );
 }
 
@@ -67,8 +92,9 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
-  pressed: { opacity: 0.85, transform: [{ scale: 0.99 }] },
   text: { flex: 1, gap: spacing.xxs },
   streakRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   streakActive: { color: colors.textPrimary },
+  lapseLink: { alignSelf: 'flex-start', paddingTop: spacing.xxs },
+  lapseText: { fontSize: 13, color: colors.textSecondary, textDecorationLine: 'underline' },
 });

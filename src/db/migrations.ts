@@ -37,6 +37,25 @@ export const MIGRATIONS: readonly { version: number; sql: string }[] = [
       );
     `,
   },
+  {
+    // Habit direction (existing habits become "build") and lapses for "break" habits.
+    // Additive only: no table is dropped or rebuilt.
+    version: 2,
+    sql: `
+      ALTER TABLE habits ADD COLUMN type TEXT NOT NULL DEFAULT 'build';
+
+      CREATE TABLE IF NOT EXISTS habit_lapses (
+        id TEXT PRIMARY KEY NOT NULL,
+        habit_id TEXT NOT NULL REFERENCES habits(id),
+        local_date TEXT NOT NULL,
+        logged_at TEXT NOT NULL,
+        UNIQUE (habit_id, local_date)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_lapses_habit_date
+        ON habit_lapses(habit_id, local_date);
+    `,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

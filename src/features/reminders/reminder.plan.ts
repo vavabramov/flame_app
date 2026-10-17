@@ -1,4 +1,5 @@
 import { type Habit } from '@/features/habits/habit.types';
+import { HABIT_TYPE_COPY } from '@/features/habits/habit-type';
 import { parseReminderTime } from '@/features/habits/habit.validation';
 
 /** iOS keeps at most 64 pending local notifications per app. */
@@ -44,7 +45,7 @@ export function planReminders(
         hour: time.hour,
         minute: time.minute,
         title: `${habit.icon} ${habit.name}`,
-        body: 'A small step today keeps your flame going.',
+        body: HABIT_TYPE_COPY[habit.type].reminderBody,
       });
     }
   }

@@ -6,11 +6,13 @@ import { type SQLiteDatabase } from 'expo-sqlite';
 
 import { type LocalDate } from '@/lib/dates';
 
-import { type Habit, type HabitCompletion } from './habit.types';
+import { parseHabitType } from './habit-type';
+import { type Habit, type HabitCompletion, type HabitLapse } from './habit.types';
 import { ALL_DAYS, normalizeScheduleDays } from './habit.validation';
 
 type HabitRow = {
   id: string;
+  type: string;
   name: string;
   icon: string;
   color: string;
@@ -28,6 +30,13 @@ type CompletionRow = {
   completed_at: string;
 };
 
+type LapseRow = {
+  id: string;
+  habit_id: string;
+  local_date: string;
+  logged_at: string;
+};
+
 /** Stored as a JSON array. Unreadable values fall back to every day rather than crashing. */
 export function parseScheduleDays(raw: string): number[] {
   try {
@@ -42,6 +51,7 @@ export function parseScheduleDays(raw: string): number[] {
 function toHabit(row: HabitRow): Habit {
   return {
     id: row.id,
+    type: parseHabitType(row.type),
     name: row.name,
     icon: row.icon,
     color: row.color,
@@ -70,9 +80,10 @@ export async function listHabits(db: SQLiteDatabase): Promise<Habit[]> {
 
 export async function insertHabit(db: SQLiteDatabase, habit: Habit): Promise<void> {
   await db.runAsync(
-    `INSERT INTO habits (id, name, icon, color, schedule_days, reminder_time, created_at, updated_at, archived_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO habits (id, type, name, icon, color, schedule_days, reminder_time, created_at, updated_at, archived_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     habit.id,
+    habit.type,
     habit.name,
     habit.icon,
     habit.color,
@@ -87,8 +98,9 @@ export async function insertHabit(db: SQLiteDatabase, habit: Habit): Promise<voi
 export async function updateHabit(db: SQLiteDatabase, habit: Habit): Promise<void> {
   await db.runAsync(
     `UPDATE habits
-     SET name = ?, icon = ?, color = ?, schedule_days = ?, reminder_time = ?, updated_at = ?, archived_at = ?
+     SET type = ?, name = ?, icon = ?, color = ?, schedule_days = ?, reminder_time = ?, updated_at = ?, archived_at = ?
      WHERE id = ?`,
+    habit.type,
     habit.name,
     habit.icon,
     habit.color,
@@ -121,4 +133,48 @@ export async function insertCompletion(db: SQLiteDatabase, completion: HabitComp
 
 export async function deleteCompletion(db: SQLiteDatabase, habitId: string, localDate: LocalDate): Promise<void> {
   await db.runAsync('DELETE FROM habit_completions WHERE habit_id = ? AND local_date = ?', habitId, localDate);
+}
+
+export async function hasCompletion(db: SQLiteDatabase, habitId: string, localDate: LocalDate): Promise<boolean> {
+  const row = await db.getFirstAsync<{ found: number }>(
+    'SELECT 1 AS found FROM habit_completions WHERE habit_id = ? AND local_date = ?',
+    habitId,
+    localDate,
+  );
+  return row !== null;
+}
+
+export async function listLapses(db: SQLiteDatabase): Promise<HabitLapse[]> {
+  const rows = await db.getAllAsync<LapseRow>('SELECT * FROM habit_lapses ORDER BY local_date ASC');
+  return rows.map((row) => ({
+    id: row.id,
+    habitId: row.habit_id,
+    localDate: row.local_date,
+    loggedAt: row.logged_at,
+  }));
+}
+
+export async function hasLapse(db: SQLiteDatabase, habitId: string, localDate: LocalDate): Promise<boolean> {
+  const row = await db.getFirstAsync<{ found: number }>(
+    'SELECT 1 AS found FROM habit_lapses WHERE habit_id = ? AND local_date = ?',
+    habitId,
+    localDate,
+  );
+  return row !== null;
+}
+
+/** Idempotent: one lapse per habit per local date. */
+export async function insertLapse(db: SQLiteDatabase, lapse: HabitLapse): Promise<void> {
+  await db.runAsync(
+    `INSERT OR IGNORE INTO habit_lapses (id, habit_id, local_date, logged_at)
+     VALUES (?, ?, ?, ?)`,
+    lapse.id,
+    lapse.habitId,
+    lapse.localDate,
+    lapse.loggedAt,
+  );
+}
+
+export async function deleteLapse(db: SQLiteDatabase, habitId: string, localDate: LocalDate): Promise<void> {
+  await db.runAsync('DELETE FROM habit_lapses WHERE habit_id = ? AND local_date = ?', habitId, localDate);
 }

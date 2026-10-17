@@ -21,7 +21,7 @@ function greeting(hour: number): string {
 }
 
 export default function TodayScreen() {
-  const { today, activeHabits, stats, toggleToday } = useHabitStore();
+  const { today, activeHabits, stats, toggleToday, toggleLapseToday } = useHabitStore();
 
   const scheduled = activeHabits.filter((h) => stats.get(h.id)?.isScheduledToday);
   const resting = activeHabits.length - scheduled.length;
@@ -98,8 +98,10 @@ export default function TodayScreen() {
                     key={habit.id}
                     habit={habit}
                     completed={summary?.isCompletedToday ?? false}
+                    lapsed={summary?.isLapsedToday ?? false}
                     currentStreak={summary?.currentStreak ?? 0}
                     onToggle={() => toggleToday(habit.id)}
+                    onToggleLapse={() => toggleLapseToday(habit.id)}
                   />
                 );
               })}

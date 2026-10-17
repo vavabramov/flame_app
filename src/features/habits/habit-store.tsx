@@ -35,6 +35,7 @@ import { type LocalDate, toLocalDate } from '@/lib/dates';
 import { useToday } from '@/lib/use-today';
 
 import { toggleCompletionDate } from './completions';
+import { tracksLapses } from './habit-type';
 import * as service from './habit.service';
 import { type Habit, type HabitInput } from './habit.types';
 
@@ -56,13 +57,18 @@ type HabitStore = {
   activeHabits: Habit[];
   archivedHabits: Habit[];
   completions: CompletionIndex;
+  /** Lapse dates per Break habit. Stored apart from completions, never a success. */
+  lapses: CompletionIndex;
   stats: Map<string, StreakSummary>;
   settings: AppSettings;
   reminders: ReminderStatus;
   createHabit: (input: HabitInput) => Promise<Habit>;
   updateHabit: (id: string, input: HabitInput) => Promise<Habit>;
   setHabitArchived: (id: string, archived: boolean) => Promise<void>;
+  /** Check in, or undo today's check-in. */
   toggleToday: (habitId: string) => void;
+  /** Log, or undo, today's lapse for a Break habit. */
+  toggleLapseToday: (habitId: string) => void;
   updateSettings: (patch: Partial<AppSettings>) => Promise<void>;
   refreshReminderPermission: () => Promise<ReminderPermission>;
   requestReminders: () => Promise<ReminderPermission>;
@@ -92,6 +98,7 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
   const [attempt, setAttempt] = useState(0);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [completions, setCompletions] = useState<CompletionIndex>(new Map());
+  const [lapses, setLapses] = useState<CompletionIndex>(new Map());
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [reminders, setReminders] = useState<ReminderStatus>({
     permission: 'undetermined',
@@ -102,6 +109,7 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
   const dbRef = useRef<SQLiteDatabase | null>(null);
   const habitsRef = useRef(habits);
   const completionsRef = useRef(completions);
+  const lapsesRef = useRef(lapses);
   const settingsRef = useRef(settings);
   // Writes run one after another so rapid taps persist in the order they happened.
   const writeQueue = useRef<Promise<unknown>>(Promise.resolve());
@@ -113,6 +121,10 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
   const commitCompletions = useCallback((next: CompletionIndex) => {
     completionsRef.current = next;
     setCompletions(next);
+  }, []);
+  const commitLapses = useCallback((next: CompletionIndex) => {
+    lapsesRef.current = next;
+    setLapses(next);
   }, []);
 
   const enqueue = useCallback(<T,>(task: (db: SQLiteDatabase) => Promise<T>): Promise<T> => {
@@ -139,7 +151,7 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         const db = await getDatabase();
-        const [{ habits: loadedHabits, completions: rows }, loadedSettings] = await Promise.all([
+        const [{ habits: loadedHabits, completions: rows, lapses: lapseRows }, loadedSettings] = await Promise.all([
           service.loadAll(db),
           loadSettings(db),
         ]);
@@ -147,6 +159,7 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
         dbRef.current = db;
         commitHabits(loadedHabits);
         commitCompletions(indexCompletions(rows));
+        commitLapses(indexCompletions(lapseRows));
         settingsRef.current = loadedSettings;
         setSettings(loadedSettings);
         setStatus('ready');
@@ -161,7 +174,7 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [attempt, commitHabits, commitCompletions, resyncReminders]);
+  }, [attempt, commitHabits, commitCompletions, commitLapses, resyncReminders]);
 
   // Permission may have changed in iOS Settings while the app was in the background.
   useEffect(() => {
@@ -211,34 +224,53 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
     [enqueue, commitHabits, resyncReminders],
   );
 
-  const toggleToday = useCallback(
-    (habitId: string) => {
-      const previous = completionsRef.current.get(habitId) ?? new Set<LocalDate>();
-      const { dates, completed } = toggleCompletionDate(previous, today, today);
+  /**
+   * Optimistically toggles today's completion or lapse, then persists it.
+   * A day holds a completion or a lapse, never both, so the opposite kind blocks the toggle.
+   */
+  const toggleDay = useCallback(
+    (habitId: string, kind: 'completion' | 'lapse') => {
+      const [ref, commit, otherRef] =
+        kind === 'completion'
+          ? [completionsRef, commitCompletions, lapsesRef]
+          : [lapsesRef, commitLapses, completionsRef];
+      if (otherRef.current.get(habitId)?.has(today)) return;
+      const habit = habitsRef.current.find((h) => h.id === habitId);
+      if (!habit || (kind === 'lapse' && !tracksLapses(habit.type))) return;
 
-      const next = new Map(completionsRef.current);
+      const previous = ref.current.get(habitId) ?? new Set<LocalDate>();
+      const { dates, completed: added } = toggleCompletionDate(previous, today, today);
+      const next = new Map(ref.current);
       next.set(habitId, dates);
-      commitCompletions(next);
+      commit(next);
 
       if (settingsRef.current.hapticsEnabled && Platform.OS !== 'web') {
-        const feedback = completed
-          ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-          : Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        const feedback =
+          kind === 'completion' && added
+            ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+            : Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         feedback.catch(() => undefined);
       }
 
-      enqueue((db) => service.setCompletion(db, habitId, today, today, completed)).catch((error) => {
-        const rollback = new Map(completionsRef.current);
+      const persist = (db: SQLiteDatabase) =>
+        kind === 'completion'
+          ? service.setCompletion(db, habitId, today, today, added)
+          : service.setLapse(db, habit, today, today, added);
+      enqueue(persist).catch((error) => {
+        const rollback = new Map(ref.current);
         const current = new Set(rollback.get(habitId) ?? []);
-        if (completed) current.delete(today);
+        if (added) current.delete(today);
         else current.add(today);
         rollback.set(habitId, current);
-        commitCompletions(rollback);
-        Alert.alert("Couldn't save your check-in", errorMessage(error));
+        commit(rollback);
+        Alert.alert(kind === 'completion' ? "Couldn't save your check-in" : "Couldn't save that", errorMessage(error));
       });
     },
-    [today, enqueue, commitCompletions],
+    [today, enqueue, commitCompletions, commitLapses],
   );
+
+  const toggleToday = useCallback((habitId: string) => toggleDay(habitId, 'completion'), [toggleDay]);
+  const toggleLapseToday = useCallback((habitId: string) => toggleDay(habitId, 'lapse'), [toggleDay]);
 
   const updateSettings = useCallback(
     async (patch: Partial<AppSettings>) => {
@@ -276,6 +308,7 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
             scheduleDays: habit.scheduleDays,
             startDate: habitStartDate(habit),
             completedDates: completions.get(habit.id) ?? [],
+            lapseDates: lapses.get(habit.id) ?? [],
           },
           today,
         ),
@@ -290,6 +323,7 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
       activeHabits,
       archivedHabits,
       completions,
+      lapses,
       stats,
       settings,
       reminders,
@@ -297,6 +331,7 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
       updateHabit,
       setHabitArchived,
       toggleToday,
+      toggleLapseToday,
       updateSettings,
       refreshReminderPermission,
       requestReminders,
@@ -308,12 +343,14 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
     today,
     habits,
     completions,
+    lapses,
     settings,
     reminders,
     createHabit,
     updateHabit,
     setHabitArchived,
     toggleToday,
+    toggleLapseToday,
     updateSettings,
     refreshReminderPermission,
     requestReminders,

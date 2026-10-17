@@ -36,6 +36,7 @@ const TODAY = '2024-01-10'; // Wednesday
 
 const habit = (overrides: Partial<Habit>): Habit => ({
   id: 'read',
+  type: 'build',
   name: 'Read 10 pages',
   icon: '📚',
   color: '#FF8737',
@@ -47,13 +48,19 @@ const habit = (overrides: Partial<Habit>): Habit => ({
   ...overrides,
 });
 
-function makeStore(habits: Habit[], completed: Record<string, string[]> = {}) {
+function makeStore(habits: Habit[], completed: Record<string, string[]> = {}, lapsed: Record<string, string[]> = {}) {
   const completions = new Map(Object.entries(completed).map(([id, dates]) => [id, new Set(dates)]));
+  const lapses = new Map(Object.entries(lapsed).map(([id, dates]) => [id, new Set(dates)]));
   const stats = new Map(
     habits.map((h) => [
       h.id,
       summarizeStreak(
-        { scheduleDays: h.scheduleDays, startDate: h.createdAt.slice(0, 10), completedDates: completions.get(h.id) ?? [] },
+        {
+          scheduleDays: h.scheduleDays,
+          startDate: h.createdAt.slice(0, 10),
+          completedDates: completions.get(h.id) ?? [],
+          lapseDates: lapses.get(h.id) ?? [],
+        },
         TODAY,
       ),
     ]),
@@ -65,10 +72,12 @@ function makeStore(habits: Habit[], completed: Record<string, string[]> = {}) {
     activeHabits: habits.filter((h) => h.archivedAt === null),
     archivedHabits: habits.filter((h) => h.archivedAt !== null),
     completions,
+    lapses,
     stats,
     settings: { ...DEFAULT_SETTINGS, onboardingCompleted: true },
     reminders: { permission: 'undetermined', overflow: 0, error: null },
     toggleToday: jest.fn(),
+    toggleLapseToday: jest.fn(),
     createHabit: jest.fn(async () => habits[0]),
     updateHabit: jest.fn(async () => habits[0]),
     setHabitArchived: jest.fn(async () => undefined),
@@ -104,8 +113,35 @@ describe('Today', () => {
     expect(screen.queryByText('Gym')).toBeNull(); // not scheduled today
     expect(screen.getByText('1 habit isn’t scheduled today.')).toBeTruthy();
 
-    await fireEvent.press(screen.getByRole('checkbox', { name: /Read 10 pages/ }));
+    expect(screen.getByText('Complete')).toBeTruthy();
+    expect(screen.queryByText('Log a lapse')).toBeNull(); // Build habits have no lapse action
+    await fireEvent.press(screen.getByRole('checkbox', { name: /Complete: Read 10 pages/ }));
     expect(mockStore.toggleToday).toHaveBeenCalledWith('read');
+  });
+
+  it('uses Break wording and offers a separate lapse action', async () => {
+    mockStore = makeStore([habit({ id: 'scroll', type: 'break', name: 'No doomscrolling' })], {
+      scroll: ['2024-01-08', '2024-01-09'],
+    });
+    await render(<TodayScreen />);
+    expect(screen.getByText('Made it today')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Log a lapse for No doomscrolling' }));
+    expect(mockStore.toggleLapseToday).toHaveBeenCalledWith('scroll');
+    expect(mockStore.toggleToday).not.toHaveBeenCalled();
+  });
+
+  it('shows a neutral restart message after a lapse, with undo', async () => {
+    mockStore = makeStore(
+      [habit({ id: 'scroll', type: 'break', name: 'No doomscrolling' })],
+      { scroll: ['2024-01-08', '2024-01-09'] },
+      { scroll: ['2024-01-10'] },
+    );
+    await render(<TodayScreen />);
+    expect(screen.getByText('Lapse noted. Tomorrow is a fresh start.')).toBeTruthy();
+    expect(screen.queryByText('Made it today')).toBeNull();
+    expect(screen.queryByText(/fail/i)).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Undo lapse for No doomscrolling' }));
+    expect(mockStore.toggleLapseToday).toHaveBeenCalledWith('scroll');
   });
 
   it('celebrates when everything is done', async () => {
@@ -169,6 +205,17 @@ describe('Habit form', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
     await screen.findByRole('button', { name: 'Save' });
     expect(mockStore.createHabit).toHaveBeenCalledWith(expect.objectContaining({ name: 'Stretch' }));
+  });
+
+  it('lets you choose Break and saves it', async () => {
+    mockStore = makeStore([]);
+    await render(<NewHabitScreen />);
+    await fireEvent.press(screen.getByRole('radio', { name: /^Break\./ }));
+    expect(screen.getByPlaceholderText('e.g. No phone after 11 pm')).toBeTruthy();
+    await fireEvent.changeText(screen.getByLabelText('Habit name'), 'No phone after 11 pm');
+    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    await screen.findByRole('button', { name: 'Save' });
+    expect(mockStore.createHabit).toHaveBeenCalledWith(expect.objectContaining({ type: 'break' }));
   });
 
   it('asks for notification permission only when a reminder is turned on', async () => {
