@@ -24,6 +24,7 @@ jest.mock('expo-router', () => ({
   router: { push: (...args: unknown[]) => mockPush(...args), back: () => mockBack() },
   useLocalSearchParams: () => ({ id: 'read' }),
   useFocusEffect: () => undefined,
+  useIsFocused: () => true,
 }));
 
 let mockStore: Record<string, unknown> = {};

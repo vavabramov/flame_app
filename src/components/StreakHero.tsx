@@ -4,16 +4,18 @@ import { colors } from '@/theme/colors';
 import { radius, spacing } from '@/theme/spacing';
 import { BODY_MAX_FONT_SCALE, DISPLAY_MAX_FONT_SCALE, type } from '@/theme/typography';
 
-import { Icon } from './Icon';
+import { LivingFlame } from './LivingFlame';
 
 type Props = {
   /** Longest current streak among active habits, or null when none is running. */
   leader: { streak: number; name: string; icon: string } | null;
   completedToday: number;
   scheduledToday: number;
+  /** Run the flame animation (pause it when the screen isn't visible). */
+  animate?: boolean;
 };
 
-export function StreakHero({ leader, completedToday, scheduledToday }: Props) {
+export function StreakHero({ leader, completedToday, scheduledToday, animate = true }: Props) {
   const lit = leader !== null && leader.streak > 0;
   const allDone = scheduledToday > 0 && completedToday === scheduledToday;
   const progress = scheduledToday === 0 ? 0 : completedToday / scheduledToday;
@@ -26,15 +28,13 @@ export function StreakHero({ leader, completedToday, scheduledToday }: Props) {
   return (
     <View style={[styles.hero, lit && styles.heroLit]}>
       <View style={styles.top}>
-        <View style={[styles.flame, lit ? styles.flameLit : styles.flameIdle]}>
-          <Icon name="flame.fill" size={34} color={lit ? colors.accent : colors.textSecondary} fallback="🔥" />
-        </View>
+        <LivingFlame size={72} isActive={lit} animate={animate} />
 
         {lit ? (
           <View
             style={styles.streakText}
             accessible
-            accessibilityLabel={`Longest active streak: ${leader.streak} in a row, ${leader.name}`}>
+            accessibilityLabel={`Current streak: ${leader.streak} in a row, ${leader.name}`}>
             <Text style={type.display} maxFontSizeMultiplier={DISPLAY_MAX_FONT_SCALE}>
               {leader.streak}
             </Text>
@@ -86,17 +86,9 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     gap: spacing.xl,
   },
-  heroLit: {
-    borderColor: 'rgba(255, 135, 55, 0.35)',
-    shadowColor: colors.accent,
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 8 },
-  },
+  // The flame carries the glow; the card only gets a warm border.
+  heroLit: { borderColor: 'rgba(255, 135, 55, 0.35)' },
   top: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
-  flame: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
-  flameLit: { backgroundColor: colors.accentMuted },
-  flameIdle: { backgroundColor: colors.elevated },
   streakText: { flex: 1, gap: spacing.xxs },
   progressBlock: { gap: spacing.sm },
   track: { height: 8, borderRadius: radius.pill, backgroundColor: colors.elevated, overflow: 'hidden' },

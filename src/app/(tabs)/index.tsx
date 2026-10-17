@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useIsFocused } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/Card';
@@ -22,6 +22,7 @@ function greeting(hour: number): string {
 
 export default function TodayScreen() {
   const { today, activeHabits, stats, toggleToday, toggleLapseToday } = useHabitStore();
+  const focused = useIsFocused();
 
   const scheduled = activeHabits.filter((h) => stats.get(h.id)?.isScheduledToday);
   const resting = activeHabits.length - scheduled.length;
@@ -59,7 +60,7 @@ export default function TodayScreen() {
       }>
       {activeHabits.length === 0 ? (
         <>
-          <StreakHero leader={null} completedToday={0} scheduledToday={0} />
+          <StreakHero leader={null} completedToday={0} scheduledToday={0} animate={focused} />
           <EmptyState
             icon="sparkles"
             iconFallback="✦"
@@ -71,7 +72,12 @@ export default function TodayScreen() {
         </>
       ) : (
         <>
-          <StreakHero leader={leader} completedToday={completedCount} scheduledToday={scheduled.length} />
+          <StreakHero
+            leader={leader}
+            completedToday={completedCount}
+            scheduledToday={scheduled.length}
+            animate={focused}
+          />
 
           <View style={styles.sectionHeader}>
             <Text style={type.caption} accessibilityRole="header">
