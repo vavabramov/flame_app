@@ -5,7 +5,7 @@ streak grow, and never lose your history when you miss a day.
 
 Offline-first. No account, backend or analytics. Everything stays in SQLite on the device.
 
-Built with Expo SDK 58, React Native 0.88, TypeScript (strict), Expo Router, `expo-sqlite`,
+Built with Expo SDK 57, React Native 0.86, TypeScript (strict), Expo Router, `expo-sqlite`,
 `expo-notifications`, `expo-haptics` and Reanimated.
 
 ## Prerequisites
@@ -28,6 +28,7 @@ npm run ios         # start and open in the iOS Simulator (requires Xcode)
 ```
 
 All native modules the app uses are included in Expo Go, so no custom development build is needed.
+The project targets **SDK 57** to match the Expo Go version in the App Store; Expo Go must be 57.x.
 
 ## Checks
 
