@@ -61,6 +61,13 @@
     },
     "setupFiles": [
       "<rootDir>/jest.setup.js"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "<rootDir>/tools/"
+    ],
+    "modulePathIgnorePatterns": [
+      "<rootDir>/tools/"
     ]
   },
   "license": "MIT"

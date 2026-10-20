@@ -278,3 +278,43 @@ src/features/blueprint/
 - `npm run lint` ✅ (0 проблем)
 - `npm test` ✅ (13 suites, 227/227)
 - `npx expo-doctor` ✅ (21/21)
+
+## 9. Статус Phase 2 (read-only MCP tools)
+
+**Проверено по официальной документации (2026-10-20):**
+- `@modelcontextprotocol/sdk` **1.32.1** (latest): `McpServer`, `registerTool`,
+  `StdioServerTransport`, `InMemoryTransport`, zod `^3.25 || ^4`;
+- для stdio — логирование только в stderr;
+- Claude Desktop: `mcpServers` с `command`/`args`/`env`, абсолютные пути, логи в
+  `~/Library/Logs/Claude/mcp-server-*.log`.
+
+**Реализовано: пакет `tools/flame-mcp/`.**
+- Свой `package.json` и lockfile. Зависимости: `@modelcontextprotocol/sdk@^1.32.1`, `zod@^4.6.7`.
+  Dev: `typescript`, `@types/node`, `tsx`, `esbuild`.
+- Инструменты:
+  - `get_capabilities` — без аргументов, лишние отклоняются;
+  - `get_templates` — необязательный `templateId` из allowlist, `.strict()`.
+- Оба инструмента помечены `readOnlyHint: true`, `destructiveHint: false`, `openWorldHint: false`.
+- Каталог импортируется из приложения (`src/features/blueprint/catalog.ts`). Туда добавлен
+  `READ_MORE_DEFAULTS`, тест сверяет его с `READ_MORE_TEMPLATE.defaults`.
+- Изоляция в корне:
+  - `tsconfig.exclude: ["tools/**"]`;
+  - в ESLint `ignores: 'tools/**'`;
+  - в Jest `testPathIgnorePatterns` и `modulePathIgnorePatterns` для `<rootDir>/tools/`.
+- Хеш iOS-бандла не изменился (`0bd9eba8…`).
+
+**Проверки:**
+- `tools/flame-mcp`:
+  - `npm run typecheck` ✅
+  - `npm test` ✅ 15/15: контракт через in-memory клиент, реальный stdio-запуск `dist/index.js`,
+    тесты изоляции (нет fs/net/shell/db/eval; приложение не импортирует пакет).
+- Корень:
+  - `npm run typecheck` ✅
+  - `npm run lint` ✅
+  - `npm test` ✅ 13 suites, 228/228
+  - `npx expo-doctor` ✅ 21/21
+
+**Не сделано в этой фазе:**
+- Конфиг Claude Desktop пользователя не менялся: это файл вне репозитория, инструкция есть в
+  `tools/flame-mcp/README.md`.
+- Draft-инструменты — Phase 3.

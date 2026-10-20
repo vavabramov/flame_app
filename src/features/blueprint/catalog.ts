@@ -116,6 +116,20 @@ export const READ_MORE_PROFILE = {
   },
 } as const;
 
+/**
+ * Suggested starting values for a Read More blueprint. Mirrors the app's
+ * `READ_MORE_TEMPLATE.defaults`; a test keeps them in sync.
+ */
+export const READ_MORE_DEFAULTS = {
+  name: 'Read',
+  direction: 'build',
+  days: [0, 1, 2, 3, 4, 5, 6],
+  reminder: null,
+  targetMinutes: 15,
+  icon: 'book-open',
+  colorToken: 'ember',
+} as const;
+
 export type ReadMoreMetricId = keyof typeof READ_MORE_PROFILE.metrics;
 export type ReadMoreWidgetId = keyof typeof READ_MORE_PROFILE.widgets;
 

@@ -5,6 +5,7 @@ const expoConfig = require('eslint-config-expo/flat');
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ['dist/*'],
+    // tools/ holds separate Node packages (e.g. the MCP server) with their own config.
+    ignores: ['dist/*', 'tools/**'],
   },
 ]);

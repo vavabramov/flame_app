@@ -1,12 +1,21 @@
 import Ajv from 'ajv';
 
+import { READ_MORE_TEMPLATE } from '@/features/habits/habit-template';
 import { NAME_MAX_LENGTH } from '@/features/habits/habit.validation';
 import { MAX_MINUTES_PER_DAY, MAX_PAGES_PER_DAY, MAX_TARGET_MINUTES } from '@/features/reading/reading.validation';
 import { HABIT_COLORS, HABIT_ICONS } from '@/theme/colors';
 
 import fixture from './__fixtures__/read-more.v1.json';
 import { type BlueprintErrorCode } from './blueprint.types';
-import { CATALOG_SUMMARY, COLOR_TOKENS, ICON_TOKENS, MAX_BLUEPRINT_BYTES, NAME_LIMIT, READ_MORE_PROFILE } from './catalog';
+import {
+  CATALOG_SUMMARY,
+  COLOR_TOKENS,
+  ICON_TOKENS,
+  MAX_BLUEPRINT_BYTES,
+  NAME_LIMIT,
+  READ_MORE_DEFAULTS,
+  READ_MORE_PROFILE,
+} from './catalog';
 import schema from './schema/habit-blueprint.v1.schema.json';
 import { parseBlueprintJson, validateBlueprint } from './validate-blueprint';
 
@@ -293,6 +302,27 @@ describe('catalog stays in sync with the app', () => {
     expect(READ_MORE_PROFILE.metrics.reading_minutes.constraints.maximum).toBe(MAX_MINUTES_PER_DAY);
     expect(READ_MORE_PROFILE.metrics.pages_read.constraints.maximum).toBe(MAX_PAGES_PER_DAY);
     expect(READ_MORE_PROFILE.metrics.reading_minutes.goal.maximum).toBe(MAX_TARGET_MINUTES);
+  });
+
+  it('suggested defaults match the app’s Read More template', () => {
+    const app = READ_MORE_TEMPLATE.defaults;
+    expect({
+      name: READ_MORE_DEFAULTS.name,
+      type: READ_MORE_DEFAULTS.direction,
+      scheduleDays: [...READ_MORE_DEFAULTS.days],
+      reminderTime: READ_MORE_DEFAULTS.reminder,
+      targetMinutes: READ_MORE_DEFAULTS.targetMinutes,
+      icon: ICON_TOKENS[READ_MORE_DEFAULTS.icon],
+      color: COLOR_TOKENS[READ_MORE_DEFAULTS.colorToken],
+    }).toEqual({
+      name: app.name,
+      type: app.type,
+      scheduleDays: app.scheduleDays,
+      reminderTime: app.reminderTime,
+      targetMinutes: app.targetMinutes,
+      icon: app.icon,
+      color: app.color,
+    });
   });
 
   it('advertises only Read More', () => {
