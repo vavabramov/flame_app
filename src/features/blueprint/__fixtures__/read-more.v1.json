@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "1.0.0",
+  "kind": "flame.habit-blueprint",
+  "blueprintId": "draft_fixture_read_more",
+  "catalogVersion": "1.0.0",
+  "template": { "id": "read-more", "version": "1.0.0" },
+  "habit": {
+    "name": "Read",
+    "direction": "build",
+    "schedule": { "kind": "weekdays", "days": [0, 1, 2, 3, 4, 5, 6] },
+    "reminder": null
+  },
+  "metrics": [
+    {
+      "id": "reading_minutes",
+      "moduleId": "metric.duration_minutes",
+      "version": "1.0.0",
+      "label": "Reading time",
+      "required": true,
+      "unit": "minutes",
+      "entryMode": "manual",
+      "constraints": { "minimum": 0, "maximum": 1440, "integer": true },
+      "goal": { "kind": "daily_target", "value": 15 }
+    },
+    {
+      "id": "pages_read",
+      "moduleId": "metric.count",
+      "version": "1.0.0",
+      "label": "Pages read",
+      "required": false,
+      "unit": "pages",
+      "entryMode": "manual",
+      "constraints": { "minimum": 0, "maximum": 10000, "integer": true },
+      "goal": null
+    }
+  ],
+  "widgets": [
+    {
+      "id": "daily_metric_entry",
+      "moduleId": "widget.metric_entry",
+      "version": "1.0.0",
+      "config": { "metricIds": ["reading_minutes", "pages_read"], "allowEditToday": true }
+    },
+    {
+      "id": "metric_summary",
+      "moduleId": "widget.metric_summary",
+      "version": "1.0.0",
+      "config": { "metricIds": ["reading_minutes", "pages_read"], "period": "last_30_days_and_all_time" }
+    }
+  ],
+  "checkIn": {
+    "moduleId": "logic.manual_check_in",
+    "version": "1.0.0",
+    "completionPolicy": "explicit_user_action",
+    "targetAutomaticallyCompletesHabit": false
+  },
+  "presentation": { "icon": "book-open", "colorToken": "ember" },
+  "metadata": { "createdBy": "manual", "notes": [] }
+}

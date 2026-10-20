@@ -1,0 +1,505 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/vavabramov/flame_app/schemas/habit-blueprint.v1.schema.json",
+  "title": "FLAME Habit Blueprint v1",
+  "description": "Declarative configuration for one new FLAME habit. Catalog 1.0.0 supports only the read-more@1.0.0 template. The app's runtime validator (validate-blueprint.ts) is authoritative and slightly stricter (e.g. it trims names and rejects control characters).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "blueprintId",
+    "catalogVersion",
+    "template",
+    "habit",
+    "metrics",
+    "widgets",
+    "checkIn",
+    "presentation"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "kind": {
+      "const": "flame.habit-blueprint"
+    },
+    "blueprintId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "catalogVersion": {
+      "const": "1.0.0"
+    },
+    "template": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "const": "read-more"
+        },
+        "version": {
+          "const": "1.0.0"
+        }
+      }
+    },
+    "habit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "direction",
+        "schedule",
+        "reminder"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "pattern": "\\S"
+        },
+        "direction": {
+          "const": "build"
+        },
+        "schedule": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "days"
+          ],
+          "properties": {
+            "kind": {
+              "const": "weekdays"
+            },
+            "days": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 7,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 6
+              }
+            }
+          }
+        },
+        "reminder": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "localTime"
+              ],
+              "properties": {
+                "localTime": {
+                  "type": "string",
+                  "pattern": "^([01]\\d|2[0-3]):([0-5]\\d)$"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "metrics": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/definitions/readingMinutes"
+          },
+          {
+            "$ref": "#/definitions/pagesRead"
+          }
+        ]
+      },
+      "allOf": [
+        {
+          "contains": {
+            "$ref": "#/definitions/readingMinutes"
+          }
+        },
+        {
+          "contains": {
+            "$ref": "#/definitions/pagesRead"
+          }
+        }
+      ]
+    },
+    "widgets": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/definitions/metricEntry"
+          },
+          {
+            "$ref": "#/definitions/metricSummary"
+          }
+        ]
+      },
+      "allOf": [
+        {
+          "contains": {
+            "$ref": "#/definitions/metricEntry"
+          }
+        },
+        {
+          "contains": {
+            "$ref": "#/definitions/metricSummary"
+          }
+        }
+      ]
+    },
+    "checkIn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "moduleId",
+        "version",
+        "completionPolicy",
+        "targetAutomaticallyCompletesHabit"
+      ],
+      "properties": {
+        "moduleId": {
+          "const": "logic.manual_check_in"
+        },
+        "version": {
+          "const": "1.0.0"
+        },
+        "completionPolicy": {
+          "const": "explicit_user_action"
+        },
+        "targetAutomaticallyCompletesHabit": {
+          "const": false
+        }
+      }
+    },
+    "presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "icon",
+        "colorToken"
+      ],
+      "properties": {
+        "icon": {
+          "enum": [
+            "sprout",
+            "water",
+            "book-open",
+            "run",
+            "meditate",
+            "strength",
+            "salad",
+            "sleep",
+            "write",
+            "guitar",
+            "brain",
+            "walk",
+            "teeth",
+            "pill",
+            "broom",
+            "no-phone",
+            "sun",
+            "palette",
+            "laptop",
+            "gratitude"
+          ]
+        },
+        "colorToken": {
+          "enum": [
+            "ember",
+            "amber",
+            "mint",
+            "lagoon",
+            "sky",
+            "lilac",
+            "rose",
+            "coral"
+          ]
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "createdBy"
+      ],
+      "properties": {
+        "createdBy": {
+          "enum": [
+            "ai-draft",
+            "manual"
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "notes": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "maxLength": 200
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "readingMinutes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "moduleId",
+        "version",
+        "label",
+        "required",
+        "unit",
+        "entryMode",
+        "constraints",
+        "goal"
+      ],
+      "properties": {
+        "id": {
+          "const": "reading_minutes"
+        },
+        "moduleId": {
+          "const": "metric.duration_minutes"
+        },
+        "version": {
+          "const": "1.0.0"
+        },
+        "label": {
+          "const": "Reading time"
+        },
+        "required": {
+          "const": true
+        },
+        "unit": {
+          "const": "minutes"
+        },
+        "entryMode": {
+          "const": "manual"
+        },
+        "constraints": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "minimum",
+            "maximum",
+            "integer"
+          ],
+          "properties": {
+            "minimum": {
+              "const": 0
+            },
+            "maximum": {
+              "const": 1440
+            },
+            "integer": {
+              "const": true
+            }
+          }
+        },
+        "goal": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "value"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "daily_target"
+                },
+                "value": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 600
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "pagesRead": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "moduleId",
+        "version",
+        "label",
+        "required",
+        "unit",
+        "entryMode",
+        "constraints",
+        "goal"
+      ],
+      "properties": {
+        "id": {
+          "const": "pages_read"
+        },
+        "moduleId": {
+          "const": "metric.count"
+        },
+        "version": {
+          "const": "1.0.0"
+        },
+        "label": {
+          "const": "Pages read"
+        },
+        "required": {
+          "const": false
+        },
+        "unit": {
+          "const": "pages"
+        },
+        "entryMode": {
+          "const": "manual"
+        },
+        "constraints": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "minimum",
+            "maximum",
+            "integer"
+          ],
+          "properties": {
+            "minimum": {
+              "const": 0
+            },
+            "maximum": {
+              "const": 10000
+            },
+            "integer": {
+              "const": true
+            }
+          }
+        },
+        "goal": {
+          "type": "null"
+        }
+      }
+    },
+    "metricEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "moduleId",
+        "version",
+        "config"
+      ],
+      "properties": {
+        "id": {
+          "const": "daily_metric_entry"
+        },
+        "moduleId": {
+          "const": "widget.metric_entry"
+        },
+        "version": {
+          "const": "1.0.0"
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "metricIds",
+            "allowEditToday"
+          ],
+          "properties": {
+            "metricIds": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "reading_minutes",
+                  "pages_read"
+                ]
+              },
+              "uniqueItems": true,
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "allowEditToday": {
+              "const": true
+            }
+          }
+        }
+      }
+    },
+    "metricSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "moduleId",
+        "version",
+        "config"
+      ],
+      "properties": {
+        "id": {
+          "const": "metric_summary"
+        },
+        "moduleId": {
+          "const": "widget.metric_summary"
+        },
+        "version": {
+          "const": "1.0.0"
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "metricIds",
+            "period"
+          ],
+          "properties": {
+            "metricIds": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "reading_minutes",
+                  "pages_read"
+                ]
+              },
+              "uniqueItems": true,
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "period": {
+              "const": "last_30_days_and_all_time"
+            }
+          }
+        }
+      }
+    }
+  }
+}
