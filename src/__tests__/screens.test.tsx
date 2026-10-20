@@ -172,7 +172,7 @@ describe('Progress', () => {
     expect(screen.getByLabelText('Current streak: 2, in a row')).toBeTruthy();
     // Jan 4–9 scheduled and elapsed (today open): 2 of 6.
     expect(screen.getByText('2 of 6 scheduled days')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Next month' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Next month' })).toBeNull(); // no month calendar, only the heatmap
   });
 
   it('shows the activity heatmap, and tapping a day reveals its date and status', async () => {
@@ -200,7 +200,7 @@ describe('Progress', () => {
     expect(screen.getByRole('button', { name: 'Monday, January 8: made it' })).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Tuesday, January 9: lapse logged' }));
     expect(screen.getByTestId('day-detail')).toHaveTextContent(/Lapse logged/);
-    expect(screen.getAllByText('Lapse')).toHaveLength(2); // heatmap and month legends
+    expect(screen.getByText('Lapse')).toBeTruthy(); // heatmap legend
   });
 
   it('explains instead of showing an empty grid for a brand-new habit', async () => {
@@ -225,6 +225,8 @@ describe('You', () => {
     expect(screen.getByText('5 more check-ins to reach 7. Check-ins across all habits count.')).toBeTruthy();
     await fireEvent(screen.getByLabelText('Haptic feedback'), 'valueChange', false);
     expect(mockStore.updateSettings).toHaveBeenCalledWith({ hapticsEnabled: false });
+    await fireEvent(screen.getByLabelText('Animated flame'), 'valueChange', false);
+    expect(mockStore.updateSettings).toHaveBeenCalledWith({ flameAnimation: false });
   });
 });
 

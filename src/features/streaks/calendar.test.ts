@@ -1,4 +1,4 @@
-import { type DayStatusContext, buildMonthGrid, dayStatus } from './calendar';
+import { type DayStatusContext, dayStatus } from './calendar';
 
 const MON_WED_FRI = [1, 3, 5];
 const ctx = (overrides: Partial<DayStatusContext> = {}): DayStatusContext => ({
@@ -42,20 +42,5 @@ describe('day status', () => {
     const c = ctx({ completed: new Set(['2024-01-08']), lapses: new Set(['2024-01-08', '2024-01-10']) });
     expect(dayStatus('2024-01-08', c)).toBe('lapse');
     expect(dayStatus('2024-01-10', c)).toBe('lapse');
-  });
-});
-
-describe('month grid', () => {
-  it('lays out a Monday-first month with padding', () => {
-    // February 2024 starts on a Thursday and has 29 days.
-    const weeks = buildMonthGrid(
-      { year: 2024, month: 2 },
-      ctx({ today: '2024-02-15', scheduleDays: [0, 1, 2, 3, 4, 5, 6], startDate: '2024-02-01', completed: new Set() }),
-    );
-    expect(weeks[0].slice(0, 3)).toEqual([null, null, null]);
-    expect(weeks[0][3]?.date).toBe('2024-02-01');
-    expect(weeks.flat().filter(Boolean)).toHaveLength(29);
-    expect(weeks.every((w) => w.length === 7)).toBe(true);
-    expect(weeks.flat().find((c) => c?.isToday)?.date).toBe('2024-02-15');
   });
 });

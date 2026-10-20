@@ -258,6 +258,11 @@ describe('settings', () => {
     expect((await loadSettings(db)).onboardingCompleted).toBe(false);
     await saveSettings(db, { onboardingCompleted: true, hapticsEnabled: false });
     await reopen();
-    expect(await loadSettings(db)).toEqual({ onboardingCompleted: true, hapticsEnabled: false, remindersEnabled: true });
+    expect(await loadSettings(db)).toEqual({
+      onboardingCompleted: true,
+      hapticsEnabled: false,
+      flameAnimation: true,
+      remindersEnabled: true,
+    });
   });
 });

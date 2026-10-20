@@ -127,13 +127,21 @@ export default function YouScreen() {
       </Section>
 
       <Section title="Preferences">
-        <Card>
+        <Card style={styles.gap}>
           <Row label="Haptic feedback" detail="A light tap when you check in">
             <Switch
               value={settings.hapticsEnabled}
               onValueChange={(hapticsEnabled) => setSetting({ hapticsEnabled })}
               trackColor={{ true: colors.accent, false: colors.borderStrong }}
               accessibilityLabel="Haptic feedback"
+            />
+          </Row>
+          <Row label="Animated flame" detail="A gently moving flame on Today, even with Reduce Motion on">
+            <Switch
+              value={settings.flameAnimation}
+              onValueChange={(flameAnimation) => setSetting({ flameAnimation })}
+              trackColor={{ true: colors.accent, false: colors.borderStrong }}
+              accessibilityLabel="Animated flame"
             />
           </Row>
         </Card>

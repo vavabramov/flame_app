@@ -21,8 +21,9 @@ function greeting(hour: number): string {
 }
 
 export default function TodayScreen() {
-  const { today, activeHabits, stats, toggleToday, toggleLapseToday } = useHabitStore();
+  const { today, activeHabits, stats, toggleToday, toggleLapseToday, settings } = useHabitStore();
   const focused = useIsFocused();
+  const animateFlame = focused && settings.flameAnimation;
 
   const scheduled = activeHabits.filter((h) => stats.get(h.id)?.isScheduledToday);
   const resting = activeHabits.length - scheduled.length;
@@ -60,7 +61,7 @@ export default function TodayScreen() {
       }>
       {activeHabits.length === 0 ? (
         <>
-          <StreakHero leader={null} completedToday={0} scheduledToday={0} animate={focused} />
+          <StreakHero leader={null} completedToday={0} scheduledToday={0} animate={animateFlame} />
           <EmptyState
             icon="sparkles"
             iconFallback="✦"
@@ -76,7 +77,7 @@ export default function TodayScreen() {
             leader={leader}
             completedToday={completedCount}
             scheduledToday={scheduled.length}
-            animate={focused}
+            animate={animateFlame}
           />
 
           <View style={styles.sectionHeader}>

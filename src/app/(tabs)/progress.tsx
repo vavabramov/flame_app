@@ -7,7 +7,6 @@ import { EmptyState } from '@/components/EmptyState';
 import { HabitHeatmap, HeatmapLegend } from '@/components/HabitHeatmap';
 import { HabitIcon } from '@/components/HabitIcon';
 import { HabitTypeBadge } from '@/components/HabitTypeSelector';
-import { ProgressCalendar } from '@/components/ProgressCalendar';
 import { Screen } from '@/components/Screen';
 import { StatTile } from '@/components/StatTile';
 import { habitStartDate, useHabitStore } from '@/features/habits/habit-store';
@@ -20,14 +19,7 @@ import {
 } from '@/features/progress/build-habit-heatmap';
 import { type DayStatusContext } from '@/features/streaks/calendar';
 import { type CompletionRate, completionRate } from '@/features/streaks/streak-calculator';
-import {
-  type LocalDate,
-  type YearMonth,
-  addMonths,
-  compareYearMonths,
-  localDateToDate,
-  yearMonthOf,
-} from '@/lib/dates';
+import { type LocalDate, localDateToDate } from '@/lib/dates';
 import { colors, withAlpha } from '@/theme/colors';
 import { GUTTER, radius, spacing } from '@/theme/spacing';
 import { BODY_MAX_FONT_SCALE, type } from '@/theme/typography';
@@ -41,7 +33,6 @@ export default function ProgressScreen() {
   const { today, activeHabits, archivedHabits, completions, lapses, stats } = useHabitStore();
   const habits = [...activeHabits, ...archivedHabits];
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [month, setMonth] = useState<YearMonth>(() => yearMonthOf(today));
   const [selectedDate, setSelectedDate] = useState<LocalDate | null>(null);
 
   const habit = habits.find((h) => h.id === selectedId) ?? habits[0];
@@ -87,16 +78,9 @@ export default function ProgressScreen() {
   const selectedCell: HabitDayCell | undefined =
     heatmap.columns.flat().find((c) => c.dateKey === (selectedDate ?? today)) ?? undefined;
 
-  // The month view can go back to the first month with any history.
-  let earliest = context.startDate;
-  for (const date of context.completed) if (date < earliest) earliest = date;
-  const currentMonth = yearMonthOf(today);
-  const firstMonth = yearMonthOf(earliest);
-
   const select = (id: string) => {
     setSelectedId(id);
     setSelectedDate(null);
-    setMonth(currentMonth);
   };
 
   return (
@@ -182,18 +166,6 @@ export default function ProgressScreen() {
             </Text>
           </View>
         )}
-      </Card>
-
-      <Card>
-        <ProgressCalendar
-          month={month}
-          context={context}
-          habitType={habit.type}
-          color={habit.color}
-          canGoBack={compareYearMonths(month, firstMonth) > 0}
-          canGoForward={compareYearMonths(month, currentMonth) < 0}
-          onChangeMonth={(delta) => setMonth((m) => addMonths(m, delta))}
-        />
       </Card>
 
       <Text style={type.footnote}>

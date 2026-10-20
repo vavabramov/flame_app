@@ -1,14 +1,15 @@
 /**
  * A small, calm, animated flame: soft outer glow, main flame and an inner
- * highlight, each on its own slow loop so the motion feels organic.
+ * highlight, each on its own loop so the motion feels organic.
  *
  * - Runs entirely on the UI thread (Reanimated shared values); no React state
  *   updates per frame.
  * - Deterministic: fixed durations and easing, no randomness.
- * - Small amplitude: scale ≤ 1.05, rotation ±2°.
- * - Static when `animate` is false (e.g. screen not focused).
- * - With Reduce Motion on, nothing moves: only the glow's brightness breathes
- *   very slowly (an opacity fade, which Apple's guidance allows).
+ * - Small amplitude: rotation ±3°, stretch ≤ 7%.
+ * - Static when `animate` is false (screen not focused, or the user turned the
+ *   animated flame off in You › Preferences).
+ * - Plays even with iOS Reduce Motion on: Reanimated would otherwise skip every
+ *   animation, and the in-app switch is the explicit way to turn it off.
  * - Fixed footprint: the glow is drawn outside the box without affecting layout.
  * - Decorative: hidden from screen readers; label the surrounding element.
  */
@@ -19,7 +20,6 @@ import Animated, {
   ReduceMotion,
   cancelAnimation,
   useAnimatedStyle,
-  useReducedMotion,
   useSharedValue,
   withDelay,
   withRepeat,
@@ -35,21 +35,24 @@ type Props = {
   size?: number;
   /** Lit (orange, glowing) when there's an active streak; dim ember otherwise. */
   isActive?: boolean;
-  /** Pause the loop, e.g. when the screen isn't visible. */
+  /** Run the loops. Pass false when the screen isn't visible or animation is off. */
   animate?: boolean;
 };
 
 const HIGHLIGHT = '#FFC24B';
 const ease = Easing.inOut(Easing.sin);
+const ALWAYS = ReduceMotion.Never;
 
-/** Loop a shared value between `from` and `to`, starting after `delay` ms. */
+/** Loop a shared value between its current value and `to`, starting after `delay` ms. */
 function loop(duration: number, to: number, delay = 0) {
-  return withDelay(delay, withRepeat(withTiming(to, { duration, easing: ease }), -1, true));
+  return withDelay(
+    delay,
+    withRepeat(withTiming(to, { duration, easing: ease, reduceMotion: ALWAYS }), -1, true, undefined, ALWAYS),
+    ALWAYS,
+  );
 }
 
 export function LivingFlame({ size = 72, isActive = true, animate = true }: Props) {
-  const reduceMotion = useReducedMotion();
-
   const glow = useSharedValue(0); // 0 → 1 drives glow opacity and scale
   const sway = useSharedValue(-1); // -1 → 1 drives rotation
   const stretch = useSharedValue(0); // 0 → 1 drives vertical scale
@@ -57,53 +60,41 @@ export function LivingFlame({ size = 72, isActive = true, animate = true }: Prop
 
   useEffect(() => {
     const values = [glow, sway, stretch, flicker];
-    if (!animate || reduceMotion) {
+    if (!animate) {
       values.forEach((v) => cancelAnimation(v));
-      glow.set(withTiming(0.5, { duration: 400 }));
-      sway.set(withTiming(0, { duration: 400 }));
-      stretch.set(withTiming(0, { duration: 400 }));
-      flicker.set(withTiming(0.5, { duration: 400 }));
-      if (animate && reduceMotion) {
-        // Opt out of Reanimated's automatic reduced-motion skip for this fade only.
-        glow.set(
-          withRepeat(
-            withTiming(1, { duration: 4500, easing: ease, reduceMotion: ReduceMotion.Never }),
-            -1,
-            true,
-            undefined,
-            ReduceMotion.Never,
-          ),
-        );
-      }
-      return () => values.forEach((v) => cancelAnimation(v));
+      glow.set(withTiming(0.5, { duration: 300, reduceMotion: ALWAYS }));
+      sway.set(withTiming(0, { duration: 300, reduceMotion: ALWAYS }));
+      stretch.set(withTiming(0, { duration: 300, reduceMotion: ALWAYS }));
+      flicker.set(withTiming(0.5, { duration: 300, reduceMotion: ALWAYS }));
+      return;
     }
     // Staggered, non-multiple durations so the layers never sync up.
-    glow.set(loop(3200, 1));
-    sway.set(loop(2600, 1, 150));
-    stretch.set(loop(2100, 1, 400));
-    flicker.set(loop(1800, 1, 250));
+    glow.set(loop(2800, 1));
+    sway.set(loop(2300, 1, 150));
+    stretch.set(loop(1700, 1, 400));
+    flicker.set(loop(1300, 1, 250));
     return () => values.forEach((v) => cancelAnimation(v));
-  }, [animate, reduceMotion, glow, sway, stretch, flicker]);
+  }, [animate, glow, sway, stretch, flicker]);
 
   // Idle embers move half as much.
   const amplitude = isActive ? 1 : 0.5;
 
   const glowStyle = useAnimatedStyle(() => ({
-    opacity: 0.35 + glow.get() * 0.3,
-    transform: [{ scale: reduceMotion ? 1 : 0.96 + glow.get() * 0.09 }],
+    opacity: 0.25 + glow.get() * 0.45,
+    transform: [{ scale: 0.92 + glow.get() * 0.16 }],
   }));
   const flameStyle = useAnimatedStyle(() => ({
     transform: [
-      { rotate: `${sway.get() * 2 * amplitude}deg` },
-      { scaleY: 1 + stretch.get() * 0.05 * amplitude },
-      { scaleX: 1 - stretch.get() * 0.015 * amplitude },
+      { rotate: `${sway.get() * 3 * amplitude}deg` },
+      { scaleY: 1 + stretch.get() * 0.07 * amplitude },
+      { scaleX: 1 - stretch.get() * 0.025 * amplitude },
     ],
   }));
   const coreStyle = useAnimatedStyle(() => ({
-    opacity: 0.7 + flicker.get() * 0.3,
+    opacity: 0.55 + flicker.get() * 0.45,
     transform: [
-      { rotate: `${-sway.get() * 1.5 * amplitude}deg` },
-      { scale: 0.94 + flicker.get() * 0.08 * amplitude },
+      { rotate: `${-sway.get() * 2 * amplitude}deg` },
+      { scaleY: 0.9 + flicker.get() * 0.16 * amplitude },
     ],
   }));
 

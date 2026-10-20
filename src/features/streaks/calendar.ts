@@ -1,14 +1,7 @@
-import {
-  type LocalDate,
-  type YearMonth,
-  compareLocalDates,
-  datesOfMonth,
-  weekdayOf,
-} from '@/lib/dates';
+import { type LocalDate, compareLocalDates, weekdayOf } from '@/lib/dates';
 
 /**
- * The status of one local calendar day for one habit. The month calendar and the
- * activity heatmap both use this, so they can never disagree.
+ * The status of one local calendar day for one habit, used by the activity heatmap.
  *
  * - completed: a successful day is stored (done / made it), scheduled or not
  * - lapse: a lapse is stored (Break habits). Never a success
@@ -37,21 +30,4 @@ export function dayStatus(date: LocalDate, ctx: DayStatusContext): HabitDayStatu
   if (!ctx.scheduleDays.includes(weekdayOf(date))) return 'unscheduled';
   if (compareLocalDates(date, ctx.startDate) < 0) return 'not-started';
   return date === ctx.today ? 'open' : 'missed';
-}
-
-export type CalendarCell = { date: LocalDate; day: number; status: HabitDayStatus; isToday: boolean };
-
-/** Monday-first weeks for a month grid. `null` pads the first and last week. */
-export function buildMonthGrid(yearMonth: YearMonth, ctx: DayStatusContext): (CalendarCell | null)[][] {
-  const dates = datesOfMonth(yearMonth);
-  const leading = (weekdayOf(dates[0]) + 6) % 7;
-  const cells: (CalendarCell | null)[] = [
-    ...Array<null>(leading).fill(null),
-    ...dates.map((date, i) => ({ date, day: i + 1, status: dayStatus(date, ctx), isToday: date === ctx.today })),
-  ];
-  while (cells.length % 7 !== 0) cells.push(null);
-
-  const weeks: (CalendarCell | null)[][] = [];
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
-  return weeks;
 }

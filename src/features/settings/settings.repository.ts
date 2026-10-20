@@ -3,6 +3,8 @@ import { type SQLiteDatabase } from 'expo-sqlite';
 export type AppSettings = {
   onboardingCompleted: boolean;
   hapticsEnabled: boolean;
+  /** Animate the Today flame. Plays even with iOS Reduce Motion on, so this is the way to stop it. */
+  flameAnimation: boolean;
   /** Master switch for all habit reminders. Per-habit times are kept when off. */
   remindersEnabled: boolean;
 };
@@ -10,6 +12,7 @@ export type AppSettings = {
 export const DEFAULT_SETTINGS: AppSettings = {
   onboardingCompleted: false,
   hapticsEnabled: true,
+  flameAnimation: true,
   remindersEnabled: true,
 };
 

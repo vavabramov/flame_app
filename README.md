@@ -44,14 +44,14 @@ The test suite covers:
 - **Streak rules** (`src/features/streaks/streak-calculator.test.ts`): all 15 required cases, plus
   completion rates.
 - **Dates** (`src/lib/dates.test.ts`): month, year and leap-day boundaries, and DST transitions.
-- **Calendar, heatmap and milestones**: day statuses, the month grid, and the activity heatmap
+- **Heatmap and milestones**: day statuses and the activity heatmap
   (`src/features/progress/build-habit-heatmap.test.ts`). The heatmap tests cover weekday
   alignment, year boundaries, leap day, DST, Build and Break wording, and the summary matching
   the completion-rate math.
 - **Lapses**: a lapse ends the current streak but keeps history and the best streak; it is never
   counted as a success.
 - **Living flame** (`src/__tests__/living-flame.test.tsx`): fixed size, which animations start,
-  reduced-motion and paused behavior.
+  Reduce Motion and paused behavior.
 - **Validation and reminder planning**: form validation, schedule parsing, the weekly reminder
   plan and the iOS 64-notification cap.
 - **Persistence** (`src/__tests__/persistence.test.ts`): the real migrations, repository and
@@ -72,7 +72,7 @@ src/
     habits/new.tsx          create habit (modal)
     habits/[id].tsx         edit, archive or restore habit (modal)
   components/               presentational components (StreakHero, LivingFlame, HabitCard, HabitHeatmap,
-                            ProgressCalendar, HabitTypeSelector, …)
+                            HabitTypeSelector, …)
   db/                       SQLite connection and versioned migrations
   features/
     habits/                 types, habit-type (Build/Break), validation, repository (SQL), service, store
@@ -171,21 +171,25 @@ months).
 - The summary ("18 of 22 scheduled days completed") uses the same definition as the completion
   rates below.
 - A habit with no elapsed scheduled days shows a short explanation instead of an empty grid.
-- The heatmap and the month calendar share one `dayStatus()` function, so they always agree.
+- Day statuses come from one pure `dayStatus()` function (`src/features/streaks/calendar.ts`).
 
 ## Living flame
 
 The Today hero uses `LivingFlame`, three SF Symbol layers animated with Reanimated on the UI
 thread:
 
-- a soft glow, breathing over 3.2 s;
-- the main flame, swaying ±2° over 2.6 s and stretching up to 5% over 2.1 s;
-- a yellow inner highlight, pulsing over 1.8 s.
+- a soft glow, breathing over 2.8 s;
+- the main flame, swaying ±3° over 2.3 s and stretching up to 7% over 1.7 s;
+- a yellow inner highlight, flickering over 1.3 s.
 
 The loops are deterministic and staggered, with no per-frame React renders. The animation pauses
-while Today isn't focused. With iOS **Reduce Motion** on, nothing moves and only the glow's
-brightness fades slowly. The flame is decorative and hidden from VoiceOver; the hero announces
-"Current streak: N in a row, <habit>".
+while Today isn't focused.
+
+It also plays with iOS **Reduce Motion** on. Reanimated would otherwise skip every animation,
+which left the flame frozen. To stop it, turn off **You › Preferences › Animated flame**.
+
+The flame is decorative and hidden from VoiceOver; the hero announces "Current streak: N in a
+row, <habit>".
 
 ## Completion rates
 
