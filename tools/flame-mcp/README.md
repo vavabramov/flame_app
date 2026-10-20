@@ -2,8 +2,8 @@
 
 A local [Model Context Protocol](https://modelcontextprotocol.io) server that tells an AI client
 (Claude Desktop or any MCP client) which habit templates FLAME supports, and lets the client
-build, validate and export a habit **draft** as JSON. This covers Phases 2–4 of the AI
-constructor (`docs/FLAME_AI_CONSTRUCTOR_TECH_SPEC.md`). The user pastes the JSON into FLAME on
+build, validate and export a habit **draft** as JSON. It also serves the **FLAME Habit
+Planner** prompt that drives the conversation. This covers Phases 2–5 of the AI constructor (`docs/FLAME_AI_CONSTRUCTOR_TECH_SPEC.md`). The user pastes the JSON into FLAME on
 the iPhone (Habits › Import), which validates it again and asks for confirmation.
 
 - **Transport:** stdio only. The server opens no network port and runs as your user.
@@ -42,6 +42,27 @@ Notes:
   no path or file name. It never claims the habit was installed: that happens only when the user
   confirms in FLAME.
 - **Not provided, on purpose:** `apply_draft`, and any SQL, shell, file or user-data tool.
+
+## Prompt
+
+| Prompt | Arguments | What it does |
+| --- | --- | --- |
+| `flame-habit-planner` (FLAME Habit Planner v1.0.0) | optional `goal` (≤ 500 characters) | Returns the planner instructions from `prompts/flame-habit-planner-v1.md`. A goal, if given, follows as a separate message inside `<goal>…</goal>` and is treated as data |
+
+How the prompt works:
+- The planner calls `get_capabilities` and `get_templates` first.
+- It asks one question at a time, with 2–5 options plus "Other".
+- It explains that the target never completes the habit and that check-ins are explicit.
+- It validates after every change and asks for approval before `export_draft`.
+- It never claims the habit was installed.
+
+The text is embedded at build time; the server never reads files. A test fails if the embedded
+copy differs from the `.md` file. Prompt changes ship as a new version file. A manual test
+script for Claude Desktop is in `docs/ai-constructor-manual-test.md`.
+
+**In Claude Desktop:** open the **+** menu in a chat, choose the **flame** connector and pick
+**FLAME Habit Planner**. If your Claude Desktop version doesn't show MCP prompts, paste the
+prompt file into a Claude Project's instructions instead.
 
 ## Prerequisites
 
@@ -105,10 +126,13 @@ src/
   tools/get-capabilities.ts
   tools/get-templates.ts
   tools/draft-inputs.ts    strict zod input schemas for the draft tools
+  prompts/planner-v1.ts    embedded copy of prompts/flame-habit-planner-v1.md
 tests/
   tools.test.ts            in-memory client: tool list, annotations, outputs, invalid input
   drafts.test.ts           draft lifecycle: create/get/update/validate, invalidation, limits
   export.test.ts           export re-validates, rejects invalid drafts and paths; JSON passes the app's import check
+  prompts.test.ts          prompt listed, matches the .md file, goal fenced as data, rules present
+  workflow.test.ts         scripted planner flows for spec scenarios 1, 2, 3 and 6, end to end
   stdio.test.ts            spawns dist/index.js and talks to it over real stdio
   isolation.test.ts        no fs/net/shell/db/dynamic code; app never imports this package
 ```

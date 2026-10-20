@@ -6,6 +6,7 @@ import {
   MAX_BLUEPRINT_BYTES,
 } from '../catalog/index';
 import { AVAILABLE_TOOLS, SERVER_VERSION } from '../config';
+import { PLANNER_PROMPT_NAME, PLANNER_PROMPT_VERSION } from '../prompts/planner-v1';
 import { MAX_DRAFTS } from '../security/input-limits';
 
 /** What this server and the FLAME catalog support. Static; contains no user data. */
@@ -16,6 +17,7 @@ export function getCapabilities() {
     templates: CATALOG_SUMMARY.templates.map((t) => ({ id: t.id, version: t.version })),
     modules: CATALOG_SUMMARY.modules.map((m) => ({ id: m.id, version: m.version })),
     tools: [...AVAILABLE_TOOLS],
+    prompts: [{ name: PLANNER_PROMPT_NAME, version: PLANNER_PROMPT_VERSION }],
     supportedTransferMode: 'manual-json',
     maxBlueprintBytes: MAX_BLUEPRINT_BYTES,
     maxDraftsPerSession: MAX_DRAFTS,
