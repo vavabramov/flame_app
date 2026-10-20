@@ -17,6 +17,8 @@ import { LATEST_SCHEMA_VERSION, MIGRATIONS, migrateDatabase } from '@/db/migrati
 import * as repo from '@/features/habits/habit.repository';
 import * as service from '@/features/habits/habit.service';
 import { loadSettings, saveSettings } from '@/features/settings/settings.repository';
+import { prepareImport } from '@/features/blueprint/import-blueprint';
+import blueprintFixture from '@/features/blueprint/__fixtures__/read-more.v1.json';
 
 jest.mock('expo-crypto', () => ({
   randomUUID: () => jest.requireActual<typeof import('node:crypto')>('node:crypto').randomUUID(),
@@ -356,6 +358,38 @@ describe('Read More reading records', () => {
     await service.setArchived(db, habit, true);
     await reopen();
     expect(await repo.listDayMetrics(db)).toHaveLength(1);
+  });
+});
+
+describe('blueprint import', () => {
+  it('creates exactly one new Read More habit and leaves existing data untouched', async () => {
+    const existing = await service.createHabit(db, input);
+    await service.setCompletion(db, existing.id, '2024-01-10', '2024-01-10', true);
+
+    const prepared = prepareImport(JSON.stringify(blueprintFixture));
+    if (!prepared.ok) throw new Error('fixture should import');
+    const created = await service.createHabit(db, prepared.input);
+    await reopen();
+
+    const habits = await repo.listHabits(db);
+    expect(habits).toHaveLength(2);
+    expect(habits.find((h) => h.id === existing.id)).toEqual(existing);
+    expect(habits.find((h) => h.id === created.id)).toMatchObject({
+      template: 'read_more',
+      targetMinutes: 15,
+      type: 'build',
+      name: 'Read',
+      icon: '📚',
+    });
+    expect(created.id).not.toBe(blueprintFixture.blueprintId);
+    expect(await repo.listCompletions(db)).toHaveLength(1);
+    expect(await repo.listDayMetrics(db)).toHaveLength(0); // no history is imported
+  });
+
+  it('writes nothing when validation fails', async () => {
+    const tampered = { ...blueprintFixture, habit: { ...blueprintFixture.habit, direction: 'break' } };
+    expect(prepareImport(JSON.stringify(tampered)).ok).toBe(false);
+    expect(await repo.listHabits(db)).toHaveLength(0);
   });
 });
 

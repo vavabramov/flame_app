@@ -47,9 +47,18 @@ export default function HabitsScreen() {
     <Screen
       title="Habits"
       action={
-        activeHabits.length > 0 ? (
-          <Button label="New" onPress={openNew} icon="plus" iconFallback="+" compact variant="secondary" />
-        ) : null
+        <View style={styles.headerActions}>
+          <Button
+            label="Import"
+            onPress={() => router.push('/habits/import')}
+            compact
+            variant="ghost"
+            accessibilityHint="Paste a habit exported from Claude"
+          />
+          {activeHabits.length > 0 ? (
+            <Button label="New" onPress={openNew} icon="plus" iconFallback="+" compact variant="secondary" />
+          ) : null}
+        </View>
       }>
       {activeHabits.length === 0 ? (
         <EmptyState
@@ -161,6 +170,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.8 },
   rowText: { flex: 1, gap: spacing.xxs },
   badges: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   archive: { gap: spacing.sm, marginTop: spacing.md },
   archiveToggle: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44 },
   archivedRow: { paddingVertical: spacing.md, opacity: 0.85 },

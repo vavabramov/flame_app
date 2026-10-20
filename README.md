@@ -177,6 +177,31 @@ The first specialized template, an experiment in light structured tracking.
   empty state. The heatmap is unchanged.
 - **Archived** Read More habits keep their reading history.
 
+## Importing a habit from Claude (AI constructor)
+
+A local MCP server (`tools/flame-mcp`, see its README) lets Claude Desktop build a Read More
+habit **draft** from the catalog and export it as JSON. There is no live connection to the
+phone. Moving the JSON over is manual: copy it on the Mac and paste it on the iPhone, for
+example with Universal Clipboard.
+
+In FLAME, open **Habits › Import** and paste the JSON:
+
+1. **Check.** The app validates the text on its own (`src/features/blueprint`):
+   - size limit of 256 KB;
+   - strict schema, catalog and Read More profile checks;
+   - then the regular habit validation.
+
+   Anything unknown or edited after export is rejected with plain-language errors, and
+   nothing is saved.
+2. **Preview** shows the name, schedule, daily target, reminder, what's tracked, and that the
+   target never completes the habit. From there you can:
+   - **Create habit**;
+   - **Edit details**, which opens the usual form prefilled;
+   - **Cancel**.
+3. **Only Create habit, or Create in the edit form, writes anything.** It calls the existing
+   `createHabit`, which makes one new row with a fresh ID. The blueprint ID is never used.
+   Existing habits and history aren't touched. Repeated taps create one habit.
+
 ## Activity heatmap
 
 Progress shows a contribution-style grid for the selected habit over the last 26 weeks (about six

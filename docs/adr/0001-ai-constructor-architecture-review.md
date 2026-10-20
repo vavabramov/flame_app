@@ -343,3 +343,39 @@ src/features/blueprint/
   `export-not-available-yet`.
 
 **Проверки:** `tools/flame-mcp` — `npm run typecheck` ✅, `npm test` ✅ 42/42.
+
+## 11. Статус Phase 4 (export/import)
+
+**MCP — `export_draft(draftId, format: "json")`:**
+- всегда заново валидирует текущую ревизию;
+- невалидный черновик → `draft_invalid` с ошибками;
+- возвращает нормализованный JSON-текст (первый content item), размер (≤ 256 KB) и
+  предлагаемое имя `flame-<draftId>.json`, производное только от серверного ID;
+- в файлы не пишет, путь или имя файла не принимает, не утверждает, что что-то установлено;
+- `get_capabilities` объявляет 7 инструментов и ограничение `export-returns-json-text-only`.
+
+**Приложение — Habits › Import (`src/app/habits/import.tsx`):**
+- **Перенос:** вставка текста без новых зависимостей. С Mac на iPhone работает через Universal
+  Clipboard.
+- **Проверка:** `prepareImport` (`src/features/blueprint/import-blueprint.ts`):
+  - лимит размера, разбор JSON и строгий `validateBlueprint`;
+  - маппинг → `validateHabitInput` как второй барьер.
+- **Preview:**
+  - Create habit / Edit details (обычная `HabitForm`, предзаполненная) / Cancel;
+  - пользовательский текст выводится только как plain text.
+- **Создание:** только через существующий `createHabit`, одна вставка `habits` с новым UUID.
+  - Повторные тапы гасит `useSingleFlight`.
+  - Ошибка записи показывается, preview остаётся, частичных записей нет.
+  - Метрики, completions и lapses не импортируются.
+- **Схема БД не менялась** (v3). MCP SDK в бандл приложения не попадает; валидатор Blueprint
+  попадает, это и есть импорт.
+
+**Проверки:**
+- `tools/flame-mcp`:
+  - `npm run typecheck` ✅
+  - `npm test` ✅ 47/47
+- Корень:
+  - `npm run typecheck` ✅
+  - `npm run lint` ✅
+  - `npm test` ✅ 242/242
+  - `npx expo-doctor` ✅ 21/21

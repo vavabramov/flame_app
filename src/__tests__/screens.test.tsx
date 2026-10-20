@@ -12,6 +12,8 @@ import NewHabitScreen from '@/app/habits/new';
 import EditHabitScreen from '@/app/habits/[id]';
 import OnboardingScreen from '@/app/onboarding';
 import ReadingScreen from '@/app/reading/[id]';
+import ImportHabitScreen from '@/app/habits/import';
+import blueprintFixture from '@/features/blueprint/__fixtures__/read-more.v1.json';
 import { type Habit } from '@/features/habits/habit.types';
 import { summarizeStreak } from '@/features/streaks/streak-calculator';
 import { DEFAULT_SETTINGS } from '@/features/settings/settings.repository';
@@ -427,5 +429,88 @@ describe('Read More', () => {
     await render(<ProgressScreen />);
     expect(screen.queryByText('Reading')).toBeNull();
     expect(screen.queryByText('No reading logged yet')).toBeNull();
+  });
+});
+
+describe('Import habit', () => {
+  const exported = JSON.stringify(blueprintFixture, null, 2);
+  const paste = async (text: string) => {
+    await fireEvent.changeText(screen.getByLabelText('Habit JSON'), text);
+    await fireEvent.press(screen.getAllByRole('button', { name: 'Check' })[0]);
+  };
+
+  it('opens from the Habits tab', async () => {
+    mockStore = makeStore([]);
+    await render(<HabitsScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Import' }));
+    expect(mockPush).toHaveBeenCalledWith('/habits/import');
+  });
+
+  it('shows friendly errors for invalid input and creates nothing', async () => {
+    mockStore = makeStore([]);
+    await render(<ImportHabitScreen />);
+    await paste('{ not json');
+    expect(screen.getByText('This can’t be imported')).toBeTruthy();
+    expect(screen.getByText('• This isn’t valid JSON.')).toBeTruthy();
+    expect(mockStore.createHabit).not.toHaveBeenCalled();
+  });
+
+  it('rejects JSON edited after export', async () => {
+    mockStore = makeStore([]);
+    await render(<ImportHabitScreen />);
+    const tampered = { ...blueprintFixture, habit: { ...blueprintFixture.habit, direction: 'break' } };
+    await paste(JSON.stringify(tampered));
+    expect(screen.getByText(/Read More is a Build habit/)).toBeTruthy();
+    expect(mockStore.createHabit).not.toHaveBeenCalled();
+  });
+
+  it('previews a valid export and creates the habit only on confirmation', async () => {
+    mockStore = makeStore([]);
+    await render(<ImportHabitScreen />);
+    await paste(exported);
+    expect(screen.getByText('Review habit')).toBeTruthy();
+    expect(screen.getByText('Every day')).toBeTruthy();
+    expect(screen.getByText('15 min')).toBeTruthy();
+    expect(screen.getByText(/counts as done only when you tap Complete/)).toBeTruthy();
+    expect(mockStore.createHabit).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Create habit' }));
+    expect(mockStore.createHabit).toHaveBeenCalledTimes(1);
+    expect(mockStore.createHabit).toHaveBeenCalledWith(
+      expect.objectContaining({ template: 'read_more', targetMinutes: 15, name: 'Read', type: 'build' }),
+    );
+    expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('cancels from the preview without creating anything', async () => {
+    mockStore = makeStore([]);
+    await render(<ImportHabitScreen />);
+    await paste(exported);
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+    expect(mockBack).toHaveBeenCalled();
+    expect(mockStore.createHabit).not.toHaveBeenCalled();
+  });
+
+  it('lets the user edit before creating', async () => {
+    mockStore = makeStore([]);
+    await render(<ImportHabitScreen />);
+    await paste(exported);
+    await fireEvent.press(screen.getByRole('button', { name: 'Edit details' }));
+    expect(screen.getByLabelText('Reading target 15 minutes')).toBeTruthy();
+    await fireEvent.changeText(screen.getByLabelText('Habit name'), 'Read at night');
+    await fireEvent.press(screen.getByRole('button', { name: 'Create' }));
+    await screen.findByRole('button', { name: 'Create' });
+    expect(mockStore.createHabit).toHaveBeenCalledWith(expect.objectContaining({ name: 'Read at night', template: 'read_more' }));
+  });
+
+  it('keeps the preview and explains when saving fails', async () => {
+    mockStore = makeStore([]);
+    (mockStore.createHabit as jest.Mock).mockRejectedValueOnce(new Error('Disk is full.'));
+    await render(<ImportHabitScreen />);
+    await paste(exported);
+    await fireEvent.press(screen.getByRole('button', { name: 'Create habit' }));
+    expect(screen.getByText('Disk is full.')).toBeTruthy();
+    expect(screen.getByText('Review habit')).toBeTruthy();
+    expect(mockBack).not.toHaveBeenCalled();
   });
 });

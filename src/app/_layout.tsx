@@ -53,6 +53,7 @@ function RootNavigator() {
       <Stack.Protected guard={settings.onboardingCompleted}>
         <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
         <Stack.Screen name="habits/new" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="habits/import" options={{ presentation: 'modal' }} />
         <Stack.Screen name="habits/[id]" options={{ presentation: 'modal' }} />
         <Stack.Screen name="reading/[id]" options={{ presentation: 'modal' }} />
       </Stack.Protected>
