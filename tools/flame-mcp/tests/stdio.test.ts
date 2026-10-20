@@ -17,7 +17,11 @@ describe('built server over real stdio', () => {
     await client.connect(transport);
     try {
       const { tools } = await client.listTools();
-      assert.deepEqual(tools.map((t) => t.name).sort(), ['get_capabilities', 'get_templates']);
+      assert.equal(tools.length, 6);
+      const created = (await client.callTool({ name: 'create_draft', arguments: { templateId: 'read-more', templateVersion: '1.0.0' } })) as {
+        structuredContent?: { validationStatus?: string };
+      };
+      assert.equal(created.structuredContent?.validationStatus, 'valid');
       const result = (await client.callTool({ name: 'get_capabilities', arguments: {} })) as { structuredContent?: { supportedTransferMode?: string } };
       assert.equal(result.structuredContent?.supportedTransferMode, 'manual-json');
     } finally {

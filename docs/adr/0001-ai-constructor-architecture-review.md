@@ -318,3 +318,28 @@ src/features/blueprint/
 - Конфиг Claude Desktop пользователя не менялся: это файл вне репозитория, инструкция есть в
   `tools/flame-mcp/README.md`.
 - Draft-инструменты — Phase 3.
+
+## 10. Статус Phase 3 (draft lifecycle)
+
+**Реализовано в `tools/flame-mcp`:**
+- Инструменты:
+  - `create_draft`, `update_draft` — пишут только в память сессии;
+  - `get_draft`, `validate_draft` — read-only.
+- **Черновики** (`drafts/draft-store.ts`):
+  - хранятся in-memory, не больше 20 на сессию;
+  - ID генерирует сервер: `draft_` + 32 hex из `node:crypto`;
+  - есть ревизия; любое изменение сбрасывает `validationStatus` в `not_validated`;
+  - на диск ничего не пишется.
+- **Фабрика** (`drafts/read-more-factory.ts`) берёт фиксированные части из каталога. Клиент
+  может задать только `name`, `direction`, `scheduleDays`, `reminderTime`,
+  `dailyTargetMinutes`, `icon` и `colorToken`.
+- **Входные схемы** — zod `.strict()`: неизвестные ключи, JSON-Patch и пути отклоняются.
+- **Ошибки инструментов:** `isError` + `{ code, message }` (`draft_not_found`,
+  `too_many_drafts`, `internal_error`). Ошибки валидации: `{ code, path, message }` из
+  валидатора приложения.
+- **Невалидные значения не переписываются молча.** Например, `direction: "break"` сохраняется
+  в черновике, а валидация возвращает `incompatible_direction`.
+- `get_capabilities` объявляет 6 инструментов и ограничения `drafts-in-memory-only`,
+  `export-not-available-yet`.
+
+**Проверки:** `tools/flame-mcp` — `npm run typecheck` ✅, `npm test` ✅ 42/42.

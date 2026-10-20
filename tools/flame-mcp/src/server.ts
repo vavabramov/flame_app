@@ -2,18 +2,41 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { SERVER_NAME, SERVER_VERSION } from './config';
+import { DraftStore } from './drafts/draft-store';
+import { ToolError } from './security/errors';
+import { createDraftInput, draftIdInput, updateDraftInput } from './tools/draft-inputs';
 import { getCapabilities } from './tools/get-capabilities';
 import { getTemplates, getTemplatesInput } from './tools/get-templates';
 
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
+/** Draft tools only change this session's in-memory drafts: nothing on disk or on the phone. */
+const DRAFT_WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } as const;
 
 const asResult = (data: Record<string, unknown>) => ({
   content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
   structuredContent: data,
 });
 
-/** Builds the server with its read-only tools. No file, network, shell or database access. */
-export function createServer(): McpServer {
+/** Known tool errors become an `isError` result with a stable code; anything else is generic. */
+async function guarded(run: () => Record<string, unknown>) {
+  try {
+    return asResult(run());
+  } catch (error) {
+    const known = error instanceof ToolError;
+    const data = {
+      error: known
+        ? { code: error.code, message: error.message }
+        : { code: 'internal_error', message: 'Something went wrong in the FLAME server.' },
+    };
+    return { ...asResult(data), isError: true };
+  }
+}
+
+/**
+ * Builds the server and its tools. No file, network, shell or database access.
+ * Drafts live in memory for this process only.
+ */
+export function createServer(drafts: DraftStore = new DraftStore()): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
 
   server.registerTool(
@@ -38,6 +61,53 @@ export function createServer(): McpServer {
       annotations: READ_ONLY,
     },
     async (args) => asResult(getTemplates(args)),
+  );
+
+  server.registerTool(
+    'create_draft',
+    {
+      title: 'Create a habit draft',
+      description:
+        'Creates a Read More habit draft from the catalog template with safe defaults, applying only the allowed parameters, and validates it. Returns the draft ID, the blueprint and the validation result. Drafts exist only in this session.',
+      inputSchema: createDraftInput,
+      annotations: DRAFT_WRITE,
+    },
+    async ({ templateId: _id, templateVersion: _version, ...params }) => guarded(() => drafts.create(params)),
+  );
+
+  server.registerTool(
+    'get_draft',
+    {
+      title: 'Get a habit draft',
+      description: 'Returns a draft from this session by ID, with its current validation status.',
+      inputSchema: draftIdInput,
+      annotations: READ_ONLY,
+    },
+    async ({ draftId }) => guarded(() => drafts.get(draftId)),
+  );
+
+  server.registerTool(
+    'update_draft',
+    {
+      title: 'Update a habit draft',
+      description:
+        'Changes allowed fields of a draft (name, direction, scheduleDays, reminderTime, dailyTargetMinutes, icon, colorToken). Unknown fields are rejected. Any change resets the validation status to not_validated; call validate_draft afterwards.',
+      inputSchema: updateDraftInput,
+      annotations: DRAFT_WRITE,
+    },
+    async ({ draftId, patch }) => guarded(() => drafts.update(draftId, patch)),
+  );
+
+  server.registerTool(
+    'validate_draft',
+    {
+      title: 'Validate a habit draft',
+      description:
+        'Validates a draft against the blueprint schema, catalog and Read More compatibility profile. Returns valid, errors (stable code, path, message), warnings and the normalized blueprint.',
+      inputSchema: draftIdInput,
+      annotations: { ...READ_ONLY, idempotentHint: true },
+    },
+    async ({ draftId }) => guarded(() => drafts.validate(draftId)),
   );
 
   return server;

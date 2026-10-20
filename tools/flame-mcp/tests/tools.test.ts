@@ -27,15 +27,23 @@ const call = async (name: string, args: Record<string, unknown> = {}) =>
   (await client.callTool({ name, arguments: args })) as ToolResult;
 
 describe('tool list', () => {
-  it('exposes exactly the two read-only tools of this phase', async () => {
+  it('exposes exactly the tools of this phase, none destructive or open-world', async () => {
     const { tools } = await client.listTools();
-    assert.deepEqual(tools.map((t) => t.name).sort(), ['get_capabilities', 'get_templates']);
+    assert.deepEqual(tools.map((t) => t.name).sort(), [
+      'create_draft',
+      'get_capabilities',
+      'get_draft',
+      'get_templates',
+      'update_draft',
+      'validate_draft',
+    ]);
     for (const tool of tools) {
-      assert.equal(tool.annotations?.readOnlyHint, true, `${tool.name} is read-only`);
-      assert.equal(tool.annotations?.destructiveHint, false);
-      assert.equal(tool.annotations?.openWorldHint, false);
+      assert.equal(tool.annotations?.destructiveHint, false, tool.name);
+      assert.equal(tool.annotations?.openWorldHint, false, tool.name);
       assert.ok(tool.description && tool.description.length > 40);
     }
+    const readOnly = tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name).sort();
+    assert.deepEqual(readOnly, ['get_capabilities', 'get_draft', 'get_templates', 'validate_draft']);
   });
 
   it('has no apply, SQL, shell, file or user-context tools', async () => {
@@ -57,7 +65,9 @@ describe('get_capabilities', () => {
     assert.deepEqual(JSON.parse(result.content[0].text), data);
     assert.deepEqual(data.blueprint, { kind: 'flame.habit-blueprint', schemaVersion: BLUEPRINT_SCHEMA_VERSION, catalogVersion: CATALOG_VERSION });
     assert.deepEqual(data.templates, [{ id: 'read-more', version: '1.0.0' }]);
-    assert.deepEqual(data.tools, ['get_capabilities', 'get_templates']);
+    assert.deepEqual(data.tools, ['get_capabilities', 'get_templates', 'create_draft', 'get_draft', 'update_draft', 'validate_draft']);
+    assert.ok(!data.tools.includes('export_draft'), 'export comes in a later phase');
+    assert.ok(data.limitations.includes('drafts-in-memory-only'));
     assert.equal(data.supportedTransferMode, 'manual-json');
     for (const limit of ['no-live-phone-database', 'no-cloud-sync', 'no-apply-to-phone', 'no-user-data-access']) {
       assert.ok(data.limitations.includes(limit), limit);
