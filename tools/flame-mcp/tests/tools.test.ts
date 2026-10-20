@@ -31,6 +31,7 @@ describe('tool list', () => {
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map((t) => t.name).sort(), [
       'create_draft',
+      'export_draft',
       'get_capabilities',
       'get_draft',
       'get_templates',
@@ -43,7 +44,7 @@ describe('tool list', () => {
       assert.ok(tool.description && tool.description.length > 40);
     }
     const readOnly = tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name).sort();
-    assert.deepEqual(readOnly, ['get_capabilities', 'get_draft', 'get_templates', 'validate_draft']);
+    assert.deepEqual(readOnly, ['export_draft', 'get_capabilities', 'get_draft', 'get_templates', 'validate_draft']);
   });
 
   it('has no apply, SQL, shell, file or user-context tools', async () => {
@@ -65,8 +66,17 @@ describe('get_capabilities', () => {
     assert.deepEqual(JSON.parse(result.content[0].text), data);
     assert.deepEqual(data.blueprint, { kind: 'flame.habit-blueprint', schemaVersion: BLUEPRINT_SCHEMA_VERSION, catalogVersion: CATALOG_VERSION });
     assert.deepEqual(data.templates, [{ id: 'read-more', version: '1.0.0' }]);
-    assert.deepEqual(data.tools, ['get_capabilities', 'get_templates', 'create_draft', 'get_draft', 'update_draft', 'validate_draft']);
-    assert.ok(!data.tools.includes('export_draft'), 'export comes in a later phase');
+    assert.deepEqual(data.tools, [
+      'get_capabilities',
+      'get_templates',
+      'create_draft',
+      'get_draft',
+      'update_draft',
+      'validate_draft',
+      'export_draft',
+    ]);
+    assert.ok(!data.tools.includes('apply_draft'));
+    assert.ok(data.limitations.includes('export-returns-json-text-only'));
     assert.ok(data.limitations.includes('drafts-in-memory-only'));
     assert.equal(data.supportedTransferMode, 'manual-json');
     for (const limit of ['no-live-phone-database', 'no-cloud-sync', 'no-apply-to-phone', 'no-user-data-access']) {

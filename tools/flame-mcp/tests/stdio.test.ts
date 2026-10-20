@@ -17,7 +17,7 @@ describe('built server over real stdio', () => {
     await client.connect(transport);
     try {
       const { tools } = await client.listTools();
-      assert.equal(tools.length, 6);
+      assert.equal(tools.length, 7);
       const created = (await client.callTool({ name: 'create_draft', arguments: { templateId: 'read-more', templateVersion: '1.0.0' } })) as {
         structuredContent?: { validationStatus?: string };
       };

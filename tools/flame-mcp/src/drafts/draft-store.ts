@@ -3,9 +3,11 @@
  * drafts disappear when the client restarts the server. Every change bumps the
  * revision, which invalidates any earlier validation result.
  */
+import { Buffer } from 'node:buffer';
 import { randomBytes } from 'node:crypto';
 
 import { type BlueprintIssue, type BlueprintWarning, type HabitBlueprintV1, validateBlueprint } from '../blueprint/index';
+import { MAX_BLUEPRINT_BYTES } from '../catalog/index';
 import { MAX_DRAFTS } from '../security/input-limits';
 import { ToolError } from '../security/errors';
 
@@ -98,6 +100,50 @@ export class DraftStore {
     const draft = this.find(id);
     const record = this.validateDraft(draft);
     return { ...this.view(draft), normalizedBlueprint: record.normalized ? clone(record.normalized) : null };
+  }
+
+  /**
+   * Re-validates the current revision (always, even if it was validated before)
+   * and returns the normalized blueprint as JSON text for manual transfer.
+   * Nothing is written to disk and nothing reaches the phone from here.
+   */
+  export(id: string): {
+    draftId: string;
+    revision: number;
+    format: 'json';
+    json: string;
+    sizeBytes: number;
+    suggestedFileName: string;
+    transfer: 'manual';
+    nextSteps: string[];
+  } {
+    const draft = this.find(id);
+    const record = this.validateDraft(draft);
+    if (!record.valid || !record.normalized) {
+      throw new ToolError('draft_invalid', 'The draft is not valid, so it can’t be exported. Fix the errors and try again.', {
+        errors: record.errors,
+      });
+    }
+    const json = `${JSON.stringify(record.normalized, null, 2)}\n`;
+    const sizeBytes = Buffer.byteLength(json, 'utf8');
+    if (sizeBytes > MAX_BLUEPRINT_BYTES) {
+      throw new ToolError('export_too_large', `The blueprint is larger than ${MAX_BLUEPRINT_BYTES / 1024} KB.`);
+    }
+    return {
+      draftId: draft.id,
+      revision: draft.revision,
+      format: 'json',
+      json,
+      sizeBytes,
+      // Derived from the server-generated ID only, never from user text.
+      suggestedFileName: `flame-${draft.id}.json`,
+      transfer: 'manual',
+      nextSteps: [
+        'Copy the JSON (or save it as a .json file).',
+        'On the iPhone, open FLAME › Habits › Import and paste it.',
+        'FLAME checks it again and shows a preview. The habit is created only when you tap Create habit.',
+      ],
+    };
   }
 
   private find(id: string): Draft {

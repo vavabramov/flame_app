@@ -44,3 +44,7 @@ export const updateDraftInput = z
   .strict();
 
 export const draftIdInput = z.object({ draftId }).strict();
+
+export const exportDraftInput = z
+  .object({ draftId, format: z.literal('json').describe('Only "json" is supported.') })
+  .strict();

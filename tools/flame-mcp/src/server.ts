@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { SERVER_NAME, SERVER_VERSION } from './config';
 import { DraftStore } from './drafts/draft-store';
 import { ToolError } from './security/errors';
-import { createDraftInput, draftIdInput, updateDraftInput } from './tools/draft-inputs';
+import { createDraftInput, draftIdInput, exportDraftInput, updateDraftInput } from './tools/draft-inputs';
 import { getCapabilities } from './tools/get-capabilities';
 import { getTemplates, getTemplatesInput } from './tools/get-templates';
 
@@ -25,7 +25,7 @@ async function guarded(run: () => Record<string, unknown>) {
     const known = error instanceof ToolError;
     const data = {
       error: known
-        ? { code: error.code, message: error.message }
+        ? { code: error.code, message: error.message, ...(error.details ? { details: error.details } : {}) }
         : { code: 'internal_error', message: 'Something went wrong in the FLAME server.' },
     };
     return { ...asResult(data), isError: true };
@@ -108,6 +108,30 @@ export function createServer(drafts: DraftStore = new DraftStore()): McpServer {
       annotations: { ...READ_ONLY, idempotentHint: true },
     },
     async ({ draftId }) => guarded(() => drafts.validate(draftId)),
+  );
+
+  server.registerTool(
+    'export_draft',
+    {
+      title: 'Export a habit draft',
+      description:
+        'Validates the draft again and returns the blueprint as JSON text for the user to copy or save. It does not write files and does not send anything to the phone: the user pastes it into FLAME (Habits › Import), which validates it again and asks for confirmation. Ask the user before exporting, and never say the habit was installed.',
+      inputSchema: exportDraftInput,
+      annotations: { ...READ_ONLY, idempotentHint: true },
+    },
+    async ({ draftId }) => {
+      const result = await guarded(() => drafts.export(draftId));
+      if ('isError' in result) return result;
+      const data = result.structuredContent as { json: string; nextSteps: string[] };
+      // The JSON itself first, so a client can show or copy it verbatim.
+      return {
+        content: [
+          { type: 'text' as const, text: data.json },
+          { type: 'text' as const, text: data.nextSteps.join('\n') },
+        ],
+        structuredContent: result.structuredContent,
+      };
+    },
   );
 
   return server;

@@ -2,9 +2,9 @@
 
 A local [Model Context Protocol](https://modelcontextprotocol.io) server that tells an AI client
 (Claude Desktop or any MCP client) which habit templates FLAME supports, and lets the client
-build and validate a habit **draft**. This is **Phase 3** of the AI constructor
-(`docs/FLAME_AI_CONSTRUCTOR_TECH_SPEC.md`): catalog tools plus the draft lifecycle. Export comes
-in Phase 4.
+build, validate and export a habit **draft** as JSON. This covers Phases 2–4 of the AI
+constructor (`docs/FLAME_AI_CONSTRUCTOR_TECH_SPEC.md`). The user pastes the JSON into FLAME on
+the iPhone (Habits › Import), which validates it again and asks for confirmation.
 
 - **Transport:** stdio only. The server opens no network port and runs as your user.
 - **No access to the iPhone.** FLAME keeps its data in SQLite on the phone, and this server
@@ -27,6 +27,7 @@ in Phase 4.
 | `get_draft` | `draftId` | The draft and its `validationStatus` (`valid`, `invalid` or `not_validated`) |
 | `update_draft` | `draftId`, `patch` with only the fields above | The changed draft. The revision goes up and `validationStatus` resets to `not_validated` |
 | `validate_draft` | `draftId` | `valid`, `errors` (stable `code`, `path`, `message`), `warnings` and the normalized blueprint |
+| `export_draft` | `draftId`, `format: "json"` | **Re-validates first.** The normalized blueprint as JSON text (first content item, verbatim), size, a suggested file name, and next steps. An invalid draft returns `draft_invalid` with the errors |
 
 Notes:
 - **Fixed parts come only from the catalog.** Modules, versions, metrics, widgets and the
@@ -37,7 +38,10 @@ Notes:
 - **Annotations:** the read tools (`get_*`, `validate_draft`) are `readOnlyHint: true`. The draft
   writers only touch this session's memory. All tools are `destructiveHint: false` and
   `openWorldHint: false`.
-- **Not implemented yet:** `export_draft` (Phase 4).
+- **Export never writes files and never contacts the phone.** It returns text only, and accepts
+  no path or file name. It never claims the habit was installed: that happens only when the user
+  confirms in FLAME.
+- **Not provided, on purpose:** `apply_draft`, and any SQL, shell, file or user-data tool.
 
 ## Prerequisites
 
@@ -80,7 +84,7 @@ npm start           # runs the server on stdio (waits for a client; Ctrl+C to st
    ```
    If Claude Desktop can't find `node`, put the full path from `which node` in `command`.
 5. Quit Claude Desktop completely and reopen it. **flame** then appears under connectors, with
-   six tools. After rebuilding, restart Claude Desktop again to load the new build.
+   seven tools. After rebuilding, restart Claude Desktop again to load the new build.
 6. Logs are in `~/Library/Logs/Claude/mcp-server-flame.log`. Only the startup line is written
    there.
 
@@ -104,6 +108,7 @@ src/
 tests/
   tools.test.ts            in-memory client: tool list, annotations, outputs, invalid input
   drafts.test.ts           draft lifecycle: create/get/update/validate, invalidation, limits
+  export.test.ts           export re-validates, rejects invalid drafts and paths; JSON passes the app's import check
   stdio.test.ts            spawns dist/index.js and talks to it over real stdio
   isolation.test.ts        no fs/net/shell/db/dynamic code; app never imports this package
 ```

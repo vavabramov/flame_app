@@ -25,13 +25,14 @@ export function getCapabilities() {
       'no-apply-to-phone',
       'no-user-data-access',
       'drafts-in-memory-only',
-      'export-not-available-yet',
+      'export-returns-json-text-only',
     ],
     notes: [
       'FLAME runs on the iPhone with its own local database. This server cannot read or change it.',
       'A blueprint is moved to the phone by hand and the app validates it again before showing a preview.',
       'Only templates and modules listed here exist. Anything else is unsupported.',
-      'Drafts live only in this server session and are lost when it restarts. Exporting a draft is not available yet.',
+      'Drafts live only in this server session and are lost when it restarts.',
+      'export_draft returns JSON text to copy; it never writes files or installs anything. The user imports it in FLAME and confirms there.',
     ],
   };
 }
