@@ -1,12 +1,18 @@
 import { type LocalDate } from '@/lib/dates';
 
+import { type HabitTemplate } from './habit-template';
 import { type HabitType } from './habit-type';
 
+export type { HabitTemplate } from './habit-template';
 export type { HabitType } from './habit-type';
 
 export type Habit = {
   id: string;
   type: HabitType;
+  /** Specialized template, or null for an ordinary habit. */
+  template: HabitTemplate | null;
+  /** Read More: daily minutes target. Guidance only; never affects check-ins or streaks. */
+  targetMinutes: number | null;
   name: string;
   icon: string;
   color: string;
@@ -34,9 +40,22 @@ export type HabitLapse = {
   loggedAt: string; // ISO timestamp
 };
 
+/** Read More: what was read on one local date. Separate from the day's check-in. */
+export type HabitDayMetric = {
+  id: string;
+  habitId: string;
+  localDate: LocalDate; // YYYY-MM-DD
+  minutes: number; // whole, ≥ 0
+  pages: number | null; // whole, ≥ 0, optional
+  recordedAt: string; // ISO timestamp of the first save
+  updatedAt: string; // ISO timestamp of the latest save
+};
+
 /** What the create/edit form submits. */
 export type HabitInput = {
   type: HabitType;
+  template: HabitTemplate | null;
+  targetMinutes: number | null;
   name: string;
   icon: string;
   color: string;

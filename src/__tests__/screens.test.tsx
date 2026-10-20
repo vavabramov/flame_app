@@ -11,6 +11,7 @@ import YouScreen from '@/app/(tabs)/you';
 import NewHabitScreen from '@/app/habits/new';
 import EditHabitScreen from '@/app/habits/[id]';
 import OnboardingScreen from '@/app/onboarding';
+import ReadingScreen from '@/app/reading/[id]';
 import { type Habit } from '@/features/habits/habit.types';
 import { summarizeStreak } from '@/features/streaks/streak-calculator';
 import { DEFAULT_SETTINGS } from '@/features/settings/settings.repository';
@@ -38,6 +39,8 @@ const TODAY = '2024-01-10'; // Wednesday
 const habit = (overrides: Partial<Habit>): Habit => ({
   id: 'read',
   type: 'build',
+  template: null,
+  targetMinutes: null,
   name: 'Read 10 pages',
   icon: '📚',
   color: '#FF8737',
@@ -49,7 +52,25 @@ const habit = (overrides: Partial<Habit>): Habit => ({
   ...overrides,
 });
 
-function makeStore(habits: Habit[], completed: Record<string, string[]> = {}, lapsed: Record<string, string[]> = {}) {
+type Reading = { minutes: number; pages: number | null };
+
+function makeStore(
+  habits: Habit[],
+  completed: Record<string, string[]> = {},
+  lapsed: Record<string, string[]> = {},
+  reading: Record<string, Record<string, Reading>> = {},
+) {
+  const dayMetrics = new Map(
+    Object.entries(reading).map(([id, byDate]) => [
+      id,
+      new Map(
+        Object.entries(byDate).map(([localDate, r]) => [
+          localDate,
+          { id: `${id}-${localDate}`, habitId: id, localDate, ...r, recordedAt: 'x', updatedAt: 'x' },
+        ]),
+      ),
+    ]),
+  );
   const completions = new Map(Object.entries(completed).map(([id, dates]) => [id, new Set(dates)]));
   const lapses = new Map(Object.entries(lapsed).map(([id, dates]) => [id, new Set(dates)]));
   const stats = new Map(
@@ -74,11 +95,13 @@ function makeStore(habits: Habit[], completed: Record<string, string[]> = {}, la
     archivedHabits: habits.filter((h) => h.archivedAt !== null),
     completions,
     lapses,
+    dayMetrics,
     stats,
     settings: { ...DEFAULT_SETTINGS, onboardingCompleted: true },
     reminders: { permission: 'undetermined', overflow: 0, error: null },
     toggleToday: jest.fn(),
     toggleLapseToday: jest.fn(),
+    saveReadingToday: jest.fn(async () => undefined),
     createHabit: jest.fn(async () => habits[0]),
     updateHabit: jest.fn(async () => habits[0]),
     setHabitArchived: jest.fn(async () => undefined),
@@ -280,5 +303,129 @@ describe('Onboarding', () => {
     await render(<OnboardingScreen />);
     await fireEvent.press(screen.getByRole('button', { name: 'Get started' }));
     expect(mockStore.updateSettings).toHaveBeenCalledWith({ onboardingCompleted: true });
+  });
+});
+
+describe('Read More', () => {
+  const readHabit = (overrides: Partial<Habit> = {}) =>
+    habit({ id: 'read', name: 'Read', icon: '📚', template: 'read_more', targetMinutes: 15, ...overrides });
+
+  it('creates a habit from the template with sensible defaults', async () => {
+    mockStore = makeStore([]);
+    await render(<NewHabitScreen />);
+    expect(screen.queryByText('Daily reading target')).toBeNull(); // manual form unchanged
+    await fireEvent.press(screen.getByRole('button', { name: 'Use the Read More template' }));
+    expect(screen.getByDisplayValue('Read')).toBeTruthy();
+    expect(screen.getByLabelText('Reading target 15 minutes')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Raise reading target' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    await screen.findByRole('button', { name: 'Save' });
+    expect(mockStore.createHabit).toHaveBeenCalledWith(
+      expect.objectContaining({ template: 'read_more', type: 'build', name: 'Read', targetMinutes: 20 }),
+    );
+  });
+
+  it('can remove the template again and create a plain habit', async () => {
+    mockStore = makeStore([]);
+    await render(<NewHabitScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Use the Read More template' }));
+    await fireEvent.press(screen.getByRole('button', { name: /Read More template applied/ }));
+    expect(screen.queryByText('Daily reading target')).toBeNull();
+    await fireEvent.changeText(screen.getByLabelText('Habit name'), 'Walk');
+    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    await screen.findByRole('button', { name: 'Save' });
+    expect(mockStore.createHabit).toHaveBeenCalledWith(expect.objectContaining({ template: null, targetMinutes: null }));
+  });
+
+  it('shows a compact reading summary on Today and opens the log', async () => {
+    mockStore = makeStore([readHabit(), habit({ id: 'walk', name: 'Walk' })], {}, {}, {
+      read: { '2024-01-10': { minutes: 12, pages: 8 } },
+    });
+    await render(<TodayScreen />);
+    expect(screen.getByText('📖 12 / 15 min · 8 pages')).toBeTruthy();
+    // Regression: the ordinary habit has no reading controls and keeps its check-in.
+    expect(screen.getAllByText(/Log reading|Edit/)).toHaveLength(1);
+    expect(screen.getByRole('checkbox', { name: /Complete: Walk/ })).toBeTruthy();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Edit today’s reading for Read' }));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/reading/[id]', params: { id: 'read' } });
+  });
+
+  it('shows the target before anything is logged, and keeps the check-in separate', async () => {
+    mockStore = makeStore([readHabit()]);
+    await render(<TodayScreen />);
+    expect(screen.getByText('📖 0 / 15 min')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Log today’s reading for Read' })).toBeTruthy();
+    await fireEvent.press(screen.getByRole('checkbox', { name: /Complete: Read/ }));
+    expect(mockStore.toggleToday).toHaveBeenCalledWith('read');
+    expect(mockStore.saveReadingToday).not.toHaveBeenCalled();
+  });
+
+  it('validates and saves today’s reading without checking in', async () => {
+    mockStore = makeStore([readHabit()]);
+    await render(<ReadingScreen />);
+    expect(screen.getByText('Log today’s reading')).toBeTruthy();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByText('Enter the minutes you read.')).toBeTruthy();
+
+    await fireEvent.changeText(screen.getByLabelText('Minutes read'), '20');
+    await fireEvent.changeText(screen.getByLabelText('Pages read, optional'), '2.5');
+    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByText('Use a whole number of pages, or leave it empty.')).toBeTruthy();
+    expect(mockStore.saveReadingToday).not.toHaveBeenCalled();
+
+    await fireEvent.changeText(screen.getByLabelText('Pages read, optional'), '');
+    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    expect(mockStore.saveReadingToday).toHaveBeenCalledWith('read', { minutes: 20, pages: null });
+    expect(mockStore.toggleToday).not.toHaveBeenCalled();
+    expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('prefills an existing entry for correction', async () => {
+    mockStore = makeStore([readHabit()], {}, {}, { read: { '2024-01-10': { minutes: 12, pages: 8 } } });
+    await render(<ReadingScreen />);
+    expect(screen.getByText('Edit today’s reading')).toBeTruthy();
+    expect(screen.getByDisplayValue('12')).toBeTruthy();
+    expect(screen.getByDisplayValue('8')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: '30 minutes' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    expect(mockStore.saveReadingToday).toHaveBeenCalledWith('read', { minutes: 30, pages: 8 });
+  });
+
+  it('checks in only when the user turns that on', async () => {
+    mockStore = makeStore([readHabit()]);
+    await render(<ReadingScreen />);
+    await fireEvent.press(screen.getByRole('button', { name: '15 minutes' }));
+    await fireEvent(screen.getByLabelText('Also check in for today'), 'valueChange', true);
+    await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    expect(mockStore.saveReadingToday).toHaveBeenCalledTimes(1);
+    expect(mockStore.toggleToday).toHaveBeenCalledWith('read');
+  });
+
+  it('shows reading totals and recent history in Progress', async () => {
+    mockStore = makeStore([readHabit()], { read: ['2024-01-09'] }, {}, {
+      read: {
+        '2024-01-09': { minutes: 20, pages: null },
+        '2024-01-10': { minutes: 15, pages: 12 },
+      },
+    });
+    await render(<ProgressScreen />);
+    expect(screen.getByLabelText('Last 30 days: 35 minutes, 12 pages, 2 days logged')).toBeTruthy();
+    expect(screen.getByText('15 min · 12 p')).toBeTruthy();
+    expect(screen.getByText('20 min')).toBeTruthy();
+    // The heatmap still works as before.
+    expect(screen.getByRole('button', { name: 'Tuesday, January 9: completed' })).toBeTruthy();
+  });
+
+  it('shows an empty state for a new reading habit, and nothing for other habits', async () => {
+    mockStore = makeStore([readHabit()]);
+    await render(<ProgressScreen />);
+    expect(screen.getByText('No reading logged yet')).toBeTruthy();
+
+    mockStore = makeStore([habit({ id: 'walk', name: 'Walk' })]);
+    await render(<ProgressScreen />);
+    expect(screen.queryByText('Reading')).toBeNull();
+    expect(screen.queryByText('No reading logged yet')).toBeNull();
   });
 });

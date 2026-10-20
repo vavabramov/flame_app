@@ -37,9 +37,12 @@ import { useToday } from '@/lib/use-today';
 import { toggleCompletionDate } from './completions';
 import { tracksLapses } from './habit-type';
 import * as service from './habit.service';
-import { type Habit, type HabitInput } from './habit.types';
+import { type Habit, type HabitDayMetric, type HabitInput } from './habit.types';
+import { type ReadingEntry } from '@/features/reading/reading.validation';
 
 type CompletionIndex = Map<string, Set<LocalDate>>;
+/** habitId → local date → that day's reading record. */
+type DayMetricIndex = Map<string, Map<LocalDate, HabitDayMetric>>;
 
 export type ReminderStatus = {
   permission: ReminderPermission;
@@ -59,6 +62,8 @@ type HabitStore = {
   completions: CompletionIndex;
   /** Lapse dates per Break habit. Stored apart from completions, never a success. */
   lapses: CompletionIndex;
+  /** Read More reading records. Separate from completions. */
+  dayMetrics: DayMetricIndex;
   stats: Map<string, StreakSummary>;
   settings: AppSettings;
   reminders: ReminderStatus;
@@ -69,6 +74,8 @@ type HabitStore = {
   toggleToday: (habitId: string) => void;
   /** Log, or undo, today's lapse for a Break habit. */
   toggleLapseToday: (habitId: string) => void;
+  /** Save or correct today's reading for a Read More habit. Doesn't check the habit in. */
+  saveReadingToday: (habitId: string, entry: ReadingEntry) => Promise<void>;
   updateSettings: (patch: Partial<AppSettings>) => Promise<void>;
   refreshReminderPermission: () => Promise<ReminderPermission>;
   requestReminders: () => Promise<ReminderPermission>;
@@ -80,6 +87,16 @@ const HabitStoreContext = createContext<HabitStore | null>(null);
 export const habitStartDate = (habit: Habit): LocalDate => toLocalDate(new Date(habit.createdAt));
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+function indexDayMetrics(rows: HabitDayMetric[]): DayMetricIndex {
+  const index: DayMetricIndex = new Map();
+  for (const row of rows) {
+    const byDate = index.get(row.habitId) ?? new Map<LocalDate, HabitDayMetric>();
+    byDate.set(row.localDate, row);
+    index.set(row.habitId, byDate);
+  }
+  return index;
+}
 
 function indexCompletions(rows: { habitId: string; localDate: LocalDate }[]): CompletionIndex {
   const index: CompletionIndex = new Map();
@@ -99,6 +116,7 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [completions, setCompletions] = useState<CompletionIndex>(new Map());
   const [lapses, setLapses] = useState<CompletionIndex>(new Map());
+  const [dayMetrics, setDayMetrics] = useState<DayMetricIndex>(new Map());
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [reminders, setReminders] = useState<ReminderStatus>({
     permission: 'undetermined',
@@ -110,6 +128,7 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
   const habitsRef = useRef(habits);
   const completionsRef = useRef(completions);
   const lapsesRef = useRef(lapses);
+  const dayMetricsRef = useRef(dayMetrics);
   const settingsRef = useRef(settings);
   // Writes run one after another so rapid taps persist in the order they happened.
   const writeQueue = useRef<Promise<unknown>>(Promise.resolve());
@@ -125,6 +144,10 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
   const commitLapses = useCallback((next: CompletionIndex) => {
     lapsesRef.current = next;
     setLapses(next);
+  }, []);
+  const commitDayMetrics = useCallback((next: DayMetricIndex) => {
+    dayMetricsRef.current = next;
+    setDayMetrics(next);
   }, []);
 
   const enqueue = useCallback(<T,>(task: (db: SQLiteDatabase) => Promise<T>): Promise<T> => {
@@ -151,7 +174,8 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         const db = await getDatabase();
-        const [{ habits: loadedHabits, completions: rows, lapses: lapseRows }, loadedSettings] = await Promise.all([
+        const [{ habits: loadedHabits, completions: rows, lapses: lapseRows, dayMetrics: metricRows }, loadedSettings] =
+          await Promise.all([
           service.loadAll(db),
           loadSettings(db),
         ]);
@@ -160,6 +184,7 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
         commitHabits(loadedHabits);
         commitCompletions(indexCompletions(rows));
         commitLapses(indexCompletions(lapseRows));
+        commitDayMetrics(indexDayMetrics(metricRows));
         settingsRef.current = loadedSettings;
         setSettings(loadedSettings);
         setStatus('ready');
@@ -174,7 +199,7 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [attempt, commitHabits, commitCompletions, commitLapses, resyncReminders]);
+  }, [attempt, commitHabits, commitCompletions, commitLapses, commitDayMetrics, resyncReminders]);
 
   // Permission may have changed in iOS Settings while the app was in the background.
   useEffect(() => {
@@ -272,6 +297,21 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
   const toggleToday = useCallback((habitId: string) => toggleDay(habitId, 'completion'), [toggleDay]);
   const toggleLapseToday = useCallback((habitId: string) => toggleDay(habitId, 'lapse'), [toggleDay]);
 
+  const saveReadingToday = useCallback(
+    async (habitId: string, entry: ReadingEntry) => {
+      const habit = habitsRef.current.find((h) => h.id === habitId);
+      if (!habit) throw new Error('This habit no longer exists.');
+      // Not optimistic: the form waits for the write, so a failed save is shown in place.
+      const metric = await enqueue((db) => service.saveReading(db, habit, today, today, entry));
+      const next = new Map(dayMetricsRef.current);
+      const byDate = new Map(next.get(habitId) ?? []);
+      byDate.set(metric.localDate, metric);
+      next.set(habitId, byDate);
+      commitDayMetrics(next);
+    },
+    [today, enqueue, commitDayMetrics],
+  );
+
   const updateSettings = useCallback(
     async (patch: Partial<AppSettings>) => {
       await enqueue((db) => saveSettings(db, patch));
@@ -325,6 +365,7 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
       archivedHabits,
       completions,
       lapses,
+      dayMetrics,
       stats,
       settings,
       reminders,
@@ -333,6 +374,7 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
       setHabitArchived,
       toggleToday,
       toggleLapseToday,
+      saveReadingToday,
       updateSettings,
       refreshReminderPermission,
       requestReminders,
@@ -345,6 +387,7 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
     habits,
     completions,
     lapses,
+    dayMetrics,
     settings,
     reminders,
     createHabit,
@@ -352,6 +395,7 @@ export function HabitStoreProvider({ children }: { children: ReactNode }) {
     setHabitArchived,
     toggleToday,
     toggleLapseToday,
+    saveReadingToday,
     updateSettings,
     refreshReminderPermission,
     requestReminders,

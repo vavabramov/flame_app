@@ -10,6 +10,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { Icon } from '@/components/Icon';
 import { Screen } from '@/components/Screen';
 import { useHabitStore } from '@/features/habits/habit-store';
+import { tracksReading } from '@/features/habits/habit-template';
 import { HABIT_TYPE_COPY, type HabitType } from '@/features/habits/habit-type';
 import { type Habit } from '@/features/habits/habit.types';
 import { describeSchedule, parseReminderTime } from '@/features/habits/habit.validation';
@@ -93,7 +94,10 @@ export default function HabitsScreen() {
                   <Text style={type.headline} numberOfLines={1} maxFontSizeMultiplier={BODY_MAX_FONT_SCALE}>
                     {habit.name}
                   </Text>
-                  <HabitTypeBadge habitType={habit.type} />
+                  <View style={styles.badges}>
+                    <HabitTypeBadge habitType={habit.type} />
+                    {tracksReading(habit.template) ? <Text style={type.footnote}>📖 Read More</Text> : null}
+                  </View>
                   <Text style={type.footnote} numberOfLines={2} maxFontSizeMultiplier={BODY_MAX_FONT_SCALE}>
                     {describeSchedule(habit.scheduleDays)}
                     {reminder ? ` · ${reminder}` : ''}
@@ -156,6 +160,7 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.8 },
   rowText: { flex: 1, gap: spacing.xxs },
+  badges: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   archive: { gap: spacing.sm, marginTop: spacing.md },
   archiveToggle: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44 },
   archivedRow: { paddingVertical: spacing.md, opacity: 0.85 },

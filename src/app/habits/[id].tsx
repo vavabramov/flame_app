@@ -68,6 +68,8 @@ export default function EditHabitScreen() {
       submitLabel="Save"
       initial={{
         type: habit.type,
+        template: habit.template,
+        targetMinutes: habit.targetMinutes,
         name: habit.name,
         icon: habit.icon,
         color: habit.color,

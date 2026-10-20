@@ -12,7 +12,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { READ_MORE_DEFAULT_TARGET, tracksReading } from '@/features/habits/habit-template';
 import { HABIT_TYPE_COPY } from '@/features/habits/habit-type';
+import { MAX_TARGET_MINUTES } from '@/features/reading/reading.validation';
 import { type HabitInput } from '@/features/habits/habit.types';
 import {
   ALL_DAYS,
@@ -43,11 +45,14 @@ type Props = {
   reminderPermission: ReminderPermission;
   remindersEnabledGlobally: boolean;
   onRequestReminderPermission: () => Promise<ReminderPermission>;
+  /** Extra content above the form, e.g. the template picker. */
+  header?: ReactNode;
   /** Extra content under the form, e.g. the archive action. */
   footer?: ReactNode;
 };
 
 const DEFAULT_REMINDER = '20:00';
+const TARGET_STEP = 5;
 
 export function HabitForm({
   title,
@@ -58,6 +63,7 @@ export function HabitForm({
   reminderPermission,
   remindersEnabledGlobally,
   onRequestReminderPermission,
+  header,
   footer,
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -122,6 +128,8 @@ export function HabitForm({
         <View style={styles.preview}>
           <HabitIcon icon={input.icon} color={input.color} size={64} />
         </View>
+
+        {header}
 
         <Section label="Direction" error={visibleErrors.type}>
           <HabitTypeSelector value={input.type} onChange={(habitType) => set({ type: habitType })} accent={input.color} />
@@ -225,6 +233,37 @@ export function HabitForm({
             </Pressable>
           ) : null}
         </Section>
+
+        {tracksReading(input.template) ? (
+          <Section label="Daily reading target" hint="Guidance only" error={visibleErrors.targetMinutes}>
+            <View style={styles.reminderCard}>
+              <View style={styles.reminderRow}>
+                <Pressable
+                  onPress={() => set({ targetMinutes: Math.max(TARGET_STEP, (input.targetMinutes ?? READ_MORE_DEFAULT_TARGET) - TARGET_STEP) })}
+                  accessibilityRole="button"
+                  accessibilityLabel="Lower reading target"
+                  style={styles.stepperButton}
+                  hitSlop={4}>
+                  <Icon name="minus" size={14} color={colors.textPrimary} fallback="−" />
+                </Pressable>
+                <Text style={[styles.time, styles.flexCenter]} accessibilityLabel={`Reading target ${input.targetMinutes ?? READ_MORE_DEFAULT_TARGET} minutes`}>
+                  {input.targetMinutes ?? READ_MORE_DEFAULT_TARGET} min
+                </Text>
+                <Pressable
+                  onPress={() => set({ targetMinutes: Math.min(MAX_TARGET_MINUTES, (input.targetMinutes ?? READ_MORE_DEFAULT_TARGET) + TARGET_STEP) })}
+                  accessibilityRole="button"
+                  accessibilityLabel="Raise reading target"
+                  style={styles.stepperButton}
+                  hitSlop={4}>
+                  <Icon name="plus" size={14} color={colors.textPrimary} fallback="+" />
+                </Pressable>
+              </View>
+              <Text style={type.footnote}>
+                Shown as a goal next to the minutes you log. Your check-in and streak stay up to you.
+              </Text>
+            </View>
+          </Section>
+        ) : null}
 
         <Section label="Reminder" error={visibleErrors.reminderTime}>
           <View style={styles.reminderCard}>
@@ -364,6 +403,7 @@ function StepperButtons({ onMinus, onPlus, label }: { onMinus: () => void; onPlu
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  flexCenter: { flex: 1, textAlign: 'center' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

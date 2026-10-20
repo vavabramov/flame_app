@@ -7,9 +7,11 @@ import { EmptyState } from '@/components/EmptyState';
 import { HabitHeatmap, HeatmapLegend } from '@/components/HabitHeatmap';
 import { HabitIcon } from '@/components/HabitIcon';
 import { HabitTypeBadge } from '@/components/HabitTypeSelector';
+import { ReadingSummaryCard } from '@/components/ReadingSummaryCard';
 import { Screen } from '@/components/Screen';
 import { StatTile } from '@/components/StatTile';
 import { habitStartDate, useHabitStore } from '@/features/habits/habit-store';
+import { tracksReading } from '@/features/habits/habit-template';
 import { HABIT_TYPE_COPY, tracksLapses } from '@/features/habits/habit-type';
 import { describeSchedule } from '@/features/habits/habit.validation';
 import {
@@ -17,6 +19,7 @@ import {
   buildHabitHeatmap,
   describeDayStatus,
 } from '@/features/progress/build-habit-heatmap';
+import { summarizeReading } from '@/features/reading/reading-summary';
 import { type DayStatusContext } from '@/features/streaks/calendar';
 import { type CompletionRate, completionRate } from '@/features/streaks/streak-calculator';
 import { type LocalDate, localDateToDate } from '@/lib/dates';
@@ -30,7 +33,7 @@ const rateDetail = ({ completed, scheduled }: CompletionRate) =>
   scheduled === 0 ? 'No scheduled days yet' : `${completed} of ${scheduled} scheduled days`;
 
 export default function ProgressScreen() {
-  const { today, activeHabits, archivedHabits, completions, lapses, stats } = useHabitStore();
+  const { today, activeHabits, archivedHabits, completions, lapses, dayMetrics, stats } = useHabitStore();
   const habits = [...activeHabits, ...archivedHabits];
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<LocalDate | null>(null);
@@ -135,6 +138,13 @@ export default function ProgressScreen() {
         <StatTile label="Last 7 days" value={formatRate(week.rate)} detail={rateDetail(week)} />
         <StatTile label="Last 30 days" value={formatRate(month30.rate)} detail={rateDetail(month30)} />
       </View>
+
+      {tracksReading(habit.template) ? (
+        <ReadingSummaryCard
+          summary={summarizeReading(dayMetrics.get(habit.id)?.values() ?? [], today)}
+          target={habit.targetMinutes}
+        />
+      ) : null}
 
       <Card style={styles.gap}>
         <View style={styles.cardHeader}>

@@ -8,6 +8,7 @@ import { Icon } from '@/components/Icon';
 import { Screen } from '@/components/Screen';
 import { StreakHero } from '@/components/StreakHero';
 import { useHabitStore } from '@/features/habits/habit-store';
+import { tracksReading } from '@/features/habits/habit-template';
 import { localDateToDate } from '@/lib/dates';
 import { colors } from '@/theme/colors';
 import { spacing, TOUCH_TARGET } from '@/theme/spacing';
@@ -21,7 +22,7 @@ function greeting(hour: number): string {
 }
 
 export default function TodayScreen() {
-  const { today, activeHabits, stats, toggleToday, toggleLapseToday, settings } = useHabitStore();
+  const { today, activeHabits, stats, toggleToday, toggleLapseToday, settings, dayMetrics } = useHabitStore();
   const focused = useIsFocused();
   const animateFlame = focused && settings.flameAnimation;
 
@@ -109,6 +110,16 @@ export default function TodayScreen() {
                     currentStreak={summary?.currentStreak ?? 0}
                     onToggle={() => toggleToday(habit.id)}
                     onToggleLapse={() => toggleLapseToday(habit.id)}
+                    reading={
+                      tracksReading(habit.template)
+                        ? {
+                            minutes: dayMetrics.get(habit.id)?.get(today)?.minutes ?? null,
+                            pages: dayMetrics.get(habit.id)?.get(today)?.pages ?? null,
+                            target: habit.targetMinutes,
+                            onLog: () => router.push({ pathname: '/reading/[id]', params: { id: habit.id } }),
+                          }
+                        : undefined
+                    }
                   />
                 );
               })}

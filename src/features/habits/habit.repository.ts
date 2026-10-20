@@ -6,13 +6,16 @@ import { type SQLiteDatabase } from 'expo-sqlite';
 
 import { type LocalDate } from '@/lib/dates';
 
+import { parseHabitTemplate } from './habit-template';
 import { parseHabitType } from './habit-type';
-import { type Habit, type HabitCompletion, type HabitLapse } from './habit.types';
+import { type Habit, type HabitCompletion, type HabitDayMetric, type HabitLapse } from './habit.types';
 import { ALL_DAYS, normalizeScheduleDays } from './habit.validation';
 
 type HabitRow = {
   id: string;
   type: string;
+  template: string | null;
+  target_minutes: number | null;
   name: string;
   icon: string;
   color: string;
@@ -28,6 +31,16 @@ type CompletionRow = {
   habit_id: string;
   local_date: string;
   completed_at: string;
+};
+
+type DayMetricRow = {
+  id: string;
+  habit_id: string;
+  local_date: string;
+  minutes: number;
+  pages: number | null;
+  recorded_at: string;
+  updated_at: string;
 };
 
 type LapseRow = {
@@ -52,6 +65,8 @@ function toHabit(row: HabitRow): Habit {
   return {
     id: row.id,
     type: parseHabitType(row.type),
+    template: parseHabitTemplate(row.template),
+    targetMinutes: row.target_minutes,
     name: row.name,
     icon: row.icon,
     color: row.color,
@@ -80,10 +95,13 @@ export async function listHabits(db: SQLiteDatabase): Promise<Habit[]> {
 
 export async function insertHabit(db: SQLiteDatabase, habit: Habit): Promise<void> {
   await db.runAsync(
-    `INSERT INTO habits (id, type, name, icon, color, schedule_days, reminder_time, created_at, updated_at, archived_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO habits (id, type, template, target_minutes, name, icon, color, schedule_days, reminder_time,
+                         created_at, updated_at, archived_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     habit.id,
     habit.type,
+    habit.template,
+    habit.targetMinutes,
     habit.name,
     habit.icon,
     habit.color,
@@ -98,9 +116,12 @@ export async function insertHabit(db: SQLiteDatabase, habit: Habit): Promise<voi
 export async function updateHabit(db: SQLiteDatabase, habit: Habit): Promise<void> {
   await db.runAsync(
     `UPDATE habits
-     SET type = ?, name = ?, icon = ?, color = ?, schedule_days = ?, reminder_time = ?, updated_at = ?, archived_at = ?
+     SET type = ?, template = ?, target_minutes = ?, name = ?, icon = ?, color = ?, schedule_days = ?,
+         reminder_time = ?, updated_at = ?, archived_at = ?
      WHERE id = ?`,
     habit.type,
+    habit.template,
+    habit.targetMinutes,
     habit.name,
     habit.icon,
     habit.color,
@@ -177,4 +198,57 @@ export async function insertLapse(db: SQLiteDatabase, lapse: HabitLapse): Promis
 
 export async function deleteLapse(db: SQLiteDatabase, habitId: string, localDate: LocalDate): Promise<void> {
   await db.runAsync('DELETE FROM habit_lapses WHERE habit_id = ? AND local_date = ?', habitId, localDate);
+}
+
+function toDayMetric(row: DayMetricRow): HabitDayMetric {
+  return {
+    id: row.id,
+    habitId: row.habit_id,
+    localDate: row.local_date,
+    minutes: row.minutes,
+    pages: row.pages,
+    recordedAt: row.recorded_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function listDayMetrics(db: SQLiteDatabase): Promise<HabitDayMetric[]> {
+  const rows = await db.getAllAsync<DayMetricRow>('SELECT * FROM habit_day_metrics ORDER BY local_date ASC');
+  return rows.map(toDayMetric);
+}
+
+export async function getDayMetric(
+  db: SQLiteDatabase,
+  habitId: string,
+  localDate: LocalDate,
+): Promise<HabitDayMetric | null> {
+  const row = await db.getFirstAsync<DayMetricRow>(
+    'SELECT * FROM habit_day_metrics WHERE habit_id = ? AND local_date = ?',
+    habitId,
+    localDate,
+  );
+  return row ? toDayMetric(row) : null;
+}
+
+/**
+ * Inserts the day's record, or updates it in place if one exists for this
+ * habit and date (UNIQUE (habit_id, local_date)). Never creates a duplicate.
+ * The original id and recorded_at are kept on update.
+ */
+export async function upsertDayMetric(db: SQLiteDatabase, metric: HabitDayMetric): Promise<void> {
+  await db.runAsync(
+    `INSERT INTO habit_day_metrics (id, habit_id, local_date, minutes, pages, recorded_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (habit_id, local_date) DO UPDATE SET
+       minutes = excluded.minutes,
+       pages = excluded.pages,
+       updated_at = excluded.updated_at`,
+    metric.id,
+    metric.habitId,
+    metric.localDate,
+    metric.minutes,
+    metric.pages,
+    metric.recordedAt,
+    metric.updatedAt,
+  );
 }

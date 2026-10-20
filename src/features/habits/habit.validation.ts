@@ -1,3 +1,6 @@
+import { isValidTargetMinutes } from '@/features/reading/reading.validation';
+
+import { isHabitTemplate } from './habit-template';
 import { isHabitType } from './habit-type';
 import { type HabitInput } from './habit.types';
 
@@ -11,7 +14,7 @@ export const WEEKDAY_LETTER = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 export type HabitInputErrors = Partial<
-  Record<'type' | 'name' | 'scheduleDays' | 'reminderTime' | 'icon' | 'color', string>
+  Record<'type' | 'template' | 'targetMinutes' | 'name' | 'scheduleDays' | 'reminderTime' | 'icon' | 'color', string>
 >;
 
 /** Sorted, unique, valid weekdays. */
@@ -48,6 +51,8 @@ export function validateHabitInput(input: HabitInput): {
     errors.reminderTime = 'Choose a valid time.';
   }
   if (!isHabitType(input.type)) errors.type = 'Choose Build or Break.';
+  if (input.template !== null && !isHabitTemplate(input.template)) errors.template = 'Unknown template.';
+  if (!isValidTargetMinutes(input.targetMinutes)) errors.targetMinutes = 'Pick a target between 1 and 600 minutes.';
   if (input.icon.trim().length === 0) errors.icon = 'Choose an icon.';
   if (input.color.trim().length === 0) errors.color = 'Choose a color.';
 

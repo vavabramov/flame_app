@@ -56,6 +56,29 @@ export const MIGRATIONS: readonly { version: number; sql: string }[] = [
         ON habit_lapses(habit_id, local_date);
     `,
   },
+  {
+    // Read More template: template marker, daily minutes target, and one reading
+    // record per habit per local date. Additive only; existing rows get NULLs.
+    version: 3,
+    sql: `
+      ALTER TABLE habits ADD COLUMN template TEXT;
+      ALTER TABLE habits ADD COLUMN target_minutes INTEGER;
+
+      CREATE TABLE IF NOT EXISTS habit_day_metrics (
+        id TEXT PRIMARY KEY NOT NULL,
+        habit_id TEXT NOT NULL REFERENCES habits(id),
+        local_date TEXT NOT NULL,
+        minutes INTEGER NOT NULL CHECK (minutes >= 0),
+        pages INTEGER CHECK (pages IS NULL OR pages >= 0),
+        recorded_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (habit_id, local_date)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_day_metrics_habit_date
+        ON habit_day_metrics(habit_id, local_date);
+    `,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

@@ -9,9 +9,11 @@ import { type LocalDate } from '@/lib/dates';
 
 import { CheckInDateError } from './completions';
 import * as repo from './habit.repository';
+import { tracksReading } from './habit-template';
 import { tracksLapses } from './habit-type';
-import { type Habit, type HabitCompletion, type HabitInput, type HabitLapse } from './habit.types';
+import { type Habit, type HabitCompletion, type HabitDayMetric, type HabitInput, type HabitLapse } from './habit.types';
 import { validateHabitInput } from './habit.validation';
+import { type ReadingEntry, isValidReadingEntry } from '@/features/reading/reading.validation';
 import { canToggleCompletion } from '@/features/streaks/streak-calculator';
 
 /** A day can be a success or a lapse, never both. */
@@ -125,11 +127,43 @@ export async function setLapse(
   });
 }
 
+/**
+ * Saves today's reading for a Read More habit, or corrects it if already saved.
+ * Independent of the check-in: it never creates or removes a completion.
+ */
+export async function saveReading(
+  db: SQLiteDatabase,
+  habit: Habit,
+  localDate: LocalDate,
+  today: LocalDate,
+  entry: ReadingEntry,
+  now = new Date(),
+): Promise<HabitDayMetric> {
+  if (!canToggleCompletion(localDate, today)) throw new CheckInDateError(localDate);
+  if (!tracksReading(habit.template)) throw new Error('Reading can only be logged for a Read More habit.');
+  if (!isValidReadingEntry(entry)) throw new Error('Minutes and pages must be whole numbers, 0 or more.');
+
+  const timestamp = now.toISOString();
+  const existing = await repo.getDayMetric(db, habit.id, localDate);
+  const metric: HabitDayMetric = {
+    id: existing?.id ?? randomUUID(),
+    habitId: habit.id,
+    localDate,
+    minutes: entry.minutes,
+    pages: entry.pages,
+    recordedAt: existing?.recordedAt ?? timestamp,
+    updatedAt: timestamp,
+  };
+  await repo.upsertDayMetric(db, metric);
+  return metric;
+}
+
 export async function loadAll(db: SQLiteDatabase) {
-  const [habits, completions, lapses] = await Promise.all([
+  const [habits, completions, lapses, dayMetrics] = await Promise.all([
     repo.listHabits(db),
     repo.listCompletions(db),
     repo.listLapses(db),
+    repo.listDayMetrics(db),
   ]);
-  return { habits, completions, lapses };
+  return { habits, completions, lapses, dayMetrics };
 }

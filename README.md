@@ -50,6 +50,10 @@ The test suite covers:
   the completion-rate math.
 - **Lapses**: a lapse ends the current streak but keeps history and the best streak; it is never
   counted as a success.
+- **Read More** (`src/features/reading/reading.test.ts`, persistence and screen tests): entry
+  validation, template defaults, summaries (30-day window, year boundary, leap day, DST, future
+  entries, empty state), the v2 → v3 migration, upsert without duplicates, today-only, independence
+  from check-ins, and the screen flows, with regression checks for ordinary habits.
 - **Living flame** (`src/__tests__/living-flame.test.tsx`): fixed size, which animations start,
   Reduce Motion and paused behavior.
 - **Validation and reminder planning**: form validation, schedule parsing, the weekly reminder
@@ -93,6 +97,7 @@ streak math has no React or SQLite dependency.
 | ------------------- | ----------------------------------------------------------------------------------------- |
 | `habits`            | `type` is `build` or `break`; `schedule_days` is a JSON array of weekdays (0 = Sunday … 6 = Saturday); `archived_at` marks archived habits |
 | `habit_completions` | successful days: one row per habit per **local** date (`YYYY-MM-DD`), `UNIQUE (habit_id, local_date)`; `completed_at` is the ISO instant |
+| `habit_day_metrics` | Read More: one reading record per habit per local date (`minutes` ≥ 0, optional `pages` ≥ 0), `UNIQUE (habit_id, local_date)`; saving again updates it in place |
 | `habit_lapses`      | Break habits only: days the unwanted behavior happened, `UNIQUE (habit_id, local_date)`; never a success |
 | `settings`          | key/value: onboarding done, haptics, reminders master switch                              |
 
@@ -102,6 +107,8 @@ streak math has no React or SQLite dependency.
   - v2 is additive: `ALTER TABLE habits ADD COLUMN type … DEFAULT 'build'` plus the new
     `habit_lapses` table. Existing habits become Build with names, schedules, completions and
     reminders untouched. Unknown stored types read as `build`.
+  - v3 is additive: `habits.template` (`read_more` or NULL), `habits.target_minutes`, and the
+    `habit_day_metrics` table. Existing habits get NULLs and behave exactly as before.
 - Foreign keys are enforced and every statement is parameterized.
 - Archiving never deletes anything. There is no hard delete in the app.
 - IDs come from `expo-crypto`'s `randomUUID()`.
@@ -146,6 +153,29 @@ Every habit has a direction, chosen in the habit form:
 Both directions share the schedule, completion table, streak calculator and screens. Changing a
 habit's direction keeps its check-ins, which then count as successful days for the new direction.
 Lapses are only shown and counted for Break habits; they stay stored if the direction changes.
+
+## Read More template
+
+The first specialized template, an experiment in light structured tracking.
+
+- **Create**: the New habit screen has a "Start from a template" card. **Read More** prefills
+  Read, Build, every day, 📚 and a 15-minute daily target. Everything stays editable, the target
+  in 5-minute steps. Removing the template returns to the blank form. Manual creation is
+  unchanged.
+- **Log**: on Today, a Read More card shows `📖 12 / 15 min · 8 pages` and a **Log reading** /
+  **Edit** link. The link opens a small modal:
+  - minutes are required, with 10/15/30/45 quick picks; pages are optional;
+  - values must be whole numbers ≥ 0, and the form shows friendly errors;
+  - entries are for today only, and saving again corrects the day's record (an upsert, never a
+    duplicate);
+  - a single-flight guard ignores repeated taps.
+- **Check-ins are unchanged.** Logging minutes never marks the habit complete, and the target
+  never affects streaks. The modal has an explicit, off-by-default "Also check in for today"
+  switch.
+- **Progress**: a Reading card shows totals for the last 30 days and all time (minutes, pages
+  when recorded, and days logged), plus the 7 most recent entries. A new reading habit shows an
+  empty state. The heatmap is unchanged.
+- **Archived** Read More habits keep their reading history.
 
 ## Activity heatmap
 
